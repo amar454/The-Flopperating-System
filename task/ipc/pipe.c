@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "../sync/spinlock.h"
+#include "../../sys/syscall.h"
 #include "../process.h"
 #include "../sched.h"
 #include "pipe.h"
@@ -63,7 +64,7 @@ int pipe_write(pipe_t* pipe, char* addr, int len) {
             }
 
             spinlock_unlock(&pipe->lock, true);
-            sched_yield();
+            syscall(SYSCALL_SCHED_YIELD, 0, 0, 0, 0, 0);
             continue;
         }
 
@@ -90,7 +91,7 @@ int pipe_read(pipe_t* pipe, char* addr, int len) {
             }
 
             spinlock_unlock(&pipe->lock, true);
-            sched_yield();
+            syscall(SYSCALL_SCHED_YIELD, 0, 0, 0, 0, 0);
             continue;
         }
 

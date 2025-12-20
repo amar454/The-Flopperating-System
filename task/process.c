@@ -13,7 +13,7 @@ You should have received a copy of the GNU General Public License along with Flo
 */
 
 #include "sched.h"
-
+#include "ipc/signal.h"
 #include "../mem/alloc.h"
 #include "../mem/pmm.h"
 #include "../mem/paging.h"
@@ -330,6 +330,25 @@ int proc_init_process_assign_name(process_t* process, const char* name) {
     return 0;
 }
 
+void proc_signal_init_process_init(process_t* process) {
+    if (!process) {
+        return;
+    }
+
+    spinlock_init(&process->sig_lock);
+
+    spinlock(&process->sig_lock);
+
+    process->sig_pending = 0;
+    process->sig_mask = 0;
+
+    for (int i = 0; i < SIGMAX; i++) {
+        process->sig_handlers[i] = NULL;
+    }
+
+    spinlock_unlock(&process->sig_lock, true);
+}
+
 int proc_create_init_process() {
     spinlock(&proc_tbl->proc_table_lock);
 
@@ -342,6 +361,8 @@ int proc_create_init_process() {
 
     init_process->state = EMBRYO;
     spinlock_unlock(&proc_tbl->proc_table_lock, true);
+
+    proc_signal_init_process_init(init_process);
 
     if (proc_init_process_zero_ids(init_process) < 0) {
         log("init_process zero_ids failed\n", RED);
@@ -388,102 +409,51 @@ int proc_create_init_process() {
     return 0;
 }
 
+#include "signal.h"
+#include "../sched.h"
+#include "../process.h"
+#include "../vfs/vfs.h"
+
 pid_t proc_getpid(process_t* process) {
-    if (!process) {
+    if (!process)
         return -1;
-    }
     return process->pid;
 }
 
 int proc_kill(process_t* process) {
-    if (!process) {
+    if (!process)
         return -1;
-    }
 
-    while (process->threads && process->threads->head) {
-        thread_t* thread = process->threads->head;
-        sched_remove(sched.ready_queue, thread);
-        sched_remove(sched.sleep_queue, thread);
-    }
-
-    if (process->cwd) {
-        vfs_close(process->cwd);
-    }
-
-    vmm_region_destroy(process->region); // TODO: free pages.
-
-    kfree(process->name, flopstrlen(process->name) + 1);
-    kfree(process->threads, sizeof(thread_list_t));
-    kfree(process, sizeof(process_t));
-
-    // NOTE: proc_info_local might not need a lock.
-    // proc_tbl->proc_table_lock needs to exist though.
-    spinlock(&proc_tbl->proc_table_lock);
-    proc_info_local->process_count--;
-    process->state = TERMINATED;
-    spinlock_unlock(&proc_tbl->proc_table_lock, true);
-    return 0;
+    return signal_send(process, SIGKILL);
 }
 
 int proc_exit_all_threads(process_t* process) {
-    if (!process) {
+    if (!process)
         return -1;
-    }
 
-    while (process->threads && process->threads->head) {
-        thread_t* thread = process->threads->head;
-        sched_remove(sched.ready_queue, thread);
-        sched_remove(sched.sleep_queue, thread);
-    }
-
-    spinlock(&proc_tbl->proc_table_lock);
-    process->state = TERMINATED;
-    spinlock_unlock(&proc_tbl->proc_table_lock, true);
-    return 0;
+    return signal_send(process, SIGTERM);
 }
 
 int proc_exit(process_t* process, int status) {
-    if (!process) {
+    if (!process)
         return -1;
-    }
 
-    spinlock(&proc_tbl->proc_table_lock);
-
-    process->state = TERMINATED;
-
-    spinlock_unlock(&proc_tbl->proc_table_lock, true);
-
-    return 0;
+    process->exit_status = status;
+    return signal_send(process, SIGTERM);
 }
 
 int proc_stop(process_t* process) {
-    if (!process) {
+    if (!process)
         return -1;
-    }
 
-    spinlock(&proc_tbl->proc_table_lock);
-
-    process->state = STOPPED;
-
-    spinlock_unlock(&proc_tbl->proc_table_lock, true);
-    return 0;
+    return signal_send(process, SIGSTOP);
 }
 
 int proc_continue(process_t* process) {
-    if (!process) {
+    if (!process)
         return -1;
-    }
 
-    spinlock(&proc_tbl->proc_table_lock);
-
-    if (process->state != STOPPED) {
-        spinlock_unlock(&proc_tbl->proc_table_lock, true);
-        return -1;
-    }
-    process->state = RUNNABLE;
-
-    spinlock_unlock(&proc_tbl->proc_table_lock, true);
-    return 0;
+    return signal_send(process, SIGCONT);
 }
 
 static int proc_copy_fds(process_t* dest, process_t* src) {
@@ -517,6 +487,21 @@ static int proc_copy_fds(process_t* dest, process_t* src) {
     }
 
     return 0;
+}
+
+static void proc_copy_signal_state(process_t* parent, process_t* child) {
+    spinlock(&parent->sig_lock);
+    spinlock(&child->sig_lock);
+
+    child->sig_mask = parent->sig_mask;
+    child->sig_pending = 0;
+
+    for (int i = 0; i < SIGMAX; i++) {
+        child->sig_handlers[i] = parent->sig_handlers[i];
+    }
+
+    spinlock_unlock(&child->sig_lock, true);
+    spinlock_unlock(&parent->sig_lock, true);
 }
 
 static int proc_copy_child_pagemap(process_t* parent, process_t* child) {
@@ -632,6 +617,8 @@ pid_t proc_fork(process_t* parent) {
     child->state = RUNNABLE;
 
     spinlock_unlock(&proc_tbl->proc_table_lock, true);
+
+    proc_copy_signal_state(parent, child);
 
     return child->pid;
 }

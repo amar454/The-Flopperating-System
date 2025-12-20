@@ -4,28 +4,24 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#define BLOCK_SIZE 32
-#define BLOCKS_PER_BOX (PAGE_SIZE / BLOCK_SIZE)
-
 typedef struct box box_t;
 
-typedef struct object {
+typedef struct box {
+    box_t* next;
+    void* page;
+    void* data_pointer;
+    uint8_t* map;
+    int total_blocks;
+} box_t;
+
+typedef struct {
     box_t* box;
     size_t size;
 } object_t;
 
-#define OBJECT_ALIGN ((sizeof(object_t) + (BLOCK_SIZE - 1)) & ~(BLOCK_SIZE - 1))
-
-typedef struct block {
-    bool used;
-} block_t;
-
-struct box {
-    struct box* next;
-    void* page;
-    block_t* blocks;
-    void* data_pointer;
-};
+#define BLOCK_SIZE 32
+#define OBJECT_ALIGN sizeof(void*)
+#define BLOCKS_PER_BOX ((PAGE_SIZE - sizeof(box_t)) / (BLOCK_SIZE + 1))
 
 void* kmalloc(size_t size);
 void kfree(void* ptr, size_t size);

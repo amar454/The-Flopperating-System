@@ -238,7 +238,7 @@ int kmain(uint32_t magic, multiboot_info_t* mb_info) {
     init_console();
     log("floppaOS kernel framebuffer: init - ok\n", GREEN);
     log("floppaOS - The Floperrating system, a free and open-source 32-bit hobby operating system\n", YELLOW);
-
+    sleep_seconds(1);
     log("Kernel compilation time: " __DATE__ " at " __TIME__ "\n", YELLOW);
     log("License: GPLv3\n", YELLOW);
     log("Date created: October 2024\n", YELLOW);
@@ -247,6 +247,7 @@ int kmain(uint32_t magic, multiboot_info_t* mb_info) {
     log("Starting floppaOS kernel...\n", YELLOW);
 
     gdt_init();
+    sleep_seconds(1);
     interrupts_init(); // idt, irq's, and isr's are set up here
     pmm_init(mb_info); // dependency for paging, vmm, and heap.
 
@@ -256,6 +257,7 @@ int kmain(uint32_t magic, multiboot_info_t* mb_info) {
 
     heap_init();
     kmalloc_memtest();
+    sleep_seconds(1);
 
     vfs_init();
     sched_init();

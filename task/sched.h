@@ -1,6 +1,5 @@
 #ifndef SCHED_H
 #define SCHED_H
-#pragma once
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -8,6 +7,7 @@
 #include "../mem/alloc.h"
 #include "../mem/pmm.h"
 #include "../mem/vmm.h"
+#include "ipc/signal.h"
 #include "../fs/vfs/vfs.h"
 #include "process.h"
 typedef struct process process_t;
@@ -40,10 +40,6 @@ typedef struct thread_priority {
     unsigned base;
     unsigned effective;
 } thread_priority_t;
-
-typedef struct signal {
-    atomic_int state;
-} signal_t;
 
 #define STARVATION_THRESHOLD 1000
 #define BOOST_AMOUNT 5

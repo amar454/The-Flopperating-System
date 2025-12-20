@@ -30,7 +30,6 @@ static inline uint32_t page_offset(uintptr_t va) {
 #define RECURSIVE_PT(pdi) ((uint32_t*) (RECURSIVE_ADDR + (pdi) *PAGE_SIZE))
 
 uintptr_t vmm_alloc(vmm_region_t* region, size_t pages, uint32_t flags) {
-    log("vmm_alloc: start\n", GREEN);
     if (!region || pages == 0) {
         log("vmm_alloc: invalid region or zero pages\n", RED);
         return (uintptr_t) (-1);
@@ -51,7 +50,6 @@ uintptr_t vmm_alloc(vmm_region_t* region, size_t pages, uint32_t flags) {
 
     region->next_free_va = va + pages * PAGE_SIZE;
 
-    log("vmm_alloc: success\n", GREEN);
     return va;
 }
 
@@ -127,14 +125,11 @@ void region_remove(vmm_region_t* region) {
 }
 
 vmm_region_t* vmm_region_create(size_t initial_pages, uint32_t flags, uintptr_t* out_va) {
-    log("vmm_region_create: start\n", GREEN);
-
     uintptr_t dir_phys = (uintptr_t) pmm_alloc_page();
     if (!dir_phys) {
         log("vmm_region_create: pmm_alloc_page failed\n", RED);
         return NULL;
     }
-    log_address("vmm_region_create: allocated page directory at phys: ", dir_phys);
 
     uint32_t* dir = (uint32_t*) dir_phys;
     flop_memset(dir, 0, PAGE_SIZE);
@@ -147,7 +142,6 @@ vmm_region_t* vmm_region_create(size_t initial_pages, uint32_t flags, uintptr_t*
         pmm_free_page((void*) dir_phys);
         return NULL;
     }
-    log_address("vmm_region_create: allocated vmm_region_t at: ", (uintptr_t) region);
 
     region->pg_dir = dir;
     region->next = NULL;
@@ -158,25 +152,19 @@ vmm_region_t* vmm_region_create(size_t initial_pages, uint32_t flags, uintptr_t*
     region->next_free_va = region->base_va;
 
     region_insert(region);
-    log("vmm_region_create: inserted region into global list\n", GREEN);
 
     if ((initial_pages > 0) && out_va) {
         uintptr_t va = vmm_alloc(region, initial_pages, flags);
         if (va == (uintptr_t) (-1)) {
-            log("vmm_region_create: vmm_alloc failed for initial pages\n", RED);
-
             region_remove(region);
             kfree(region, sizeof(vmm_region_t));
             pmm_free_page((void*) dir_phys);
             return NULL;
         } else {
             *out_va = va;
-            log_uint("vmm_region_create: pages allocated: ", initial_pages);
-            log_address("vmm_region_create: starting VA: ", va);
         }
     }
 
-    log("vmm_region_create: success\n", GREEN);
     return region;
 }
 

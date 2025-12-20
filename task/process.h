@@ -9,6 +9,7 @@
 #include "../mem/alloc.h"
 #include "../mem/pmm.h"
 #include "../mem/vmm.h"
+#include "ipc/signal.h"
 #include "../fs/vfs/vfs.h"
 #include "sched.h"
 typedef struct process process_t;
@@ -101,6 +102,16 @@ typedef struct process {
 
     // process pipes
     pipe_t* pipe;
+
+    int exit_status;
+
+    signal_handler_t sig_handlers[SIGMAX];
+
+    uint32_t sig_mask;
+
+    uint32_t sig_pending;
+
+    spinlock_t sig_lock;
 } process_t;
 
 process_t* proc_get_current();

@@ -97,22 +97,6 @@ void sched_wake_reaper(void) {
     }
 }
 
-static inline void signal_wait(signal_t* s) {
-    while (atomic_load(&s->state) == 0)
-        sched_yield();
-
-    atomic_store(&s->state, 0);
-}
-
-static inline void signal_init(signal_t* s) {
-    atomic_store(&s->state, 0);
-}
-
-static inline void signal_send(signal_t* s, void (*entry)(void)) {
-    atomic_store(&s->state, 1);
-    entry();
-}
-
 static thread_t* sched_reaper_dequeue_dead(void) {
     spinlock(&reaper_desc.lock);
     thread_t* dead_thread = sched_dequeue(&reaper_desc.dead_threads);
@@ -276,13 +260,11 @@ int sched_init_kernel_worker_pool(void);
 // init list spinlocks
 // and create reaper and idle threads
 void sched_init(void) {
-    log("sched: initializing lists\n", GREEN);
     if (sched_scheduler_lists_init() < 0) {
         log("sched: failed to init scheduler lists\n", RED);
         return;
     }
 
-    log("sched: assigning list names\n", GREEN);
     if (sched_assign_list_names() < 0) {
         log("sched: failed to init scheduler list names\n", RED);
         return;
@@ -291,7 +273,6 @@ void sched_init(void) {
     sched.stealer_thread = NULL;
     sched.next_tid = 0;
 
-    log("sched: adding idle thread to ready queue\n", GREEN);
     sched_thread_list_add(sched.idle_thread, sched.ready_queue);
 
     log("sched: init - ok", GREEN);
