@@ -1,17 +1,101 @@
 
 #include "spinlock.h"
 #include <stdint.h>
-
-#define SPIN_COUNT 1000 // Number of spins before blocking
-
+#include <stdatomic.h>
+#include "../process.h"
+#include "../sched.h"
+#include "../../lib/assert.h"
+#include "../../lib/logging.h"
+extern thread* current_thread;
 typedef enum {
-    MUTEX_STATE_UNLOCKED,
-    MUTEX_STATE_LOCKED,
-    MUTEX_STATE_CONTESTED
+    MUTEX_UNLOCKED,
+    MUTEX_LOCKED
 } mutex_state_t;
 
-typedef struct {
-    volatile mutex_state_t state; // Mutex state
-    //spinlock_t lock;              // Spinlock for protecting the wait queue
-    //task_queue_t wait_queue;         // Queue of tasks waiting for the mutex
+typedef struct mutex {
+    atomic_int state;
+    process_t* owner;
+    thread_list_t wait_queue;
+    spinlock_t wait_lock;
 } mutex_t;
+
+void mutex_init(mutex_t* mutex, char* name) {
+    atomic_store(&mutex->state, MUTEX_UNLOCKED);
+    mutex->owner = NULL;
+
+    mutex->wait_queue.head = NULL;
+    mutex->wait_queue.tail = NULL;
+    mutex->wait_queue.count = 0;
+    mutex->wait_queue.name = name;
+    spinlock_init(&mutex->wait_queue.lock);
+
+    spinlock_init(&mutex->wait_lock);
+}
+
+void mutex_lock(mutex_t* mutex, process_t* owner) {
+    thread_t* current = current_thread;
+
+    for (;;) {
+        int expected = MUTEX_UNLOCKED;
+
+        // wait for mutex to be unlocked
+        if (atomic_compare_exchange_strong_explicit(
+                &mutex->state,
+                &expected,
+                MUTEX_LOCKED,
+                memory_order_acquire,
+                memory_order_relaxed)) {
+
+            mutex->owner = owner;
+            return;
+        }
+
+        spinlock(&mutex->wait_lock);
+
+        // if mutex is unlocked, unlock wait_lock and try again
+        if (atomic_load_explicit(&mutex->state, memory_order_relaxed) == 0) {
+            spinlock_unlock(&mutex->wait_lock, true);
+            continue;
+        }
+
+        // add to mutex wait queue
+        sched_thread_list_add(current, &mutex->wait_queue);
+
+        spinlock_unlock(&mutex->wait_lock, true);
+
+        // sets thread state to blocked
+        sched_block();
+    }
+}
+
+
+void mutex_unlock(mutex_t* mutex) {
+    thread_t* current = current_thread;
+
+    // if any of this is true, we should not be here
+    if (!current || mutex->owner != current->process) {
+        log("mutex: what are you doing bruh", RED);
+        return;
+    }
+
+    spinlock(&mutex->wait_lock);
+
+    thread_t* next = sched_dequeue(&mutex->wait_queue);
+
+    if (next) {
+        // if there is a waiting thread, transfer ownership keep it in locked state
+        mutex->owner = next->process;
+
+        // wake the sleeping thread
+        sched_unblock(next);
+        spinlock_unlock(&mutex->wait_lock, true);
+        return;
+    }
+
+    // no threads waiting
+    // release mutex, set state to unlocked
+    mutex->owner = NULL;
+    atomic_store_explicit(&mutex->state, 0, memory_order_release);
+
+    spinlock_unlock(&mutex->wait_lock, true);
+}

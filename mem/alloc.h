@@ -25,7 +25,6 @@ typedef struct guarded_object {
     size_t pages;
 } guarded_object_t;
 
-
 #define BLOCK_SIZE 32
 #define OBJECT_ALIGN sizeof(void*)
 #define BLOCKS_PER_BOX ((PAGE_SIZE - sizeof(box_t)) / (BLOCK_SIZE + 1))

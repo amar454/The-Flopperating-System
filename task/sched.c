@@ -561,6 +561,26 @@ void sched_yield(void) {
     sched_schedule();
 }
 
+void sched_block(void) {
+    thread_t* current = sched_current_thread();
+    if (!current) {
+        return;
+    }
+
+    current->thread_state = THREAD_SLEEPING;
+
+    sched_schedule();
+}
+
+void sched_unblock(thread_t* thread) {
+    if (!thread) {
+        return;
+    }
+
+    thread->thread_state = THREAD_READY;
+    sched_enqueue(sched.ready_queue, thread);
+}
+
 void sched_thread_sleep(uint32_t ms) {
     thread_t* current = sched_current_thread();
     if (!current || ms == 0) {

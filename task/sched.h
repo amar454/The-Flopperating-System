@@ -31,7 +31,8 @@ typedef enum thread_state {
     THREAD_SLEEPING,
     THREAD_EXITED,
     THREAD_DEAD,
-    THREAD_SUSPENDED
+    THREAD_SUSPENDED,
+    THREAD_BLOCKED
 } thread_state_t;
 
 typedef struct thread thread_t;
@@ -113,7 +114,8 @@ typedef struct scheduler {
     thread_t* reaper_thread;
     thread_t* stealer_thread;
 } scheduler_t;
-
+void sched_block(void);
+void sched_unblock(thread_t* thread);
 extern scheduler_t sched;
 
 thread_t* sched_create_kernel_thread(void (*entry)(void), unsigned priority, char* name);
