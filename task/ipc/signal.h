@@ -44,4 +44,4 @@ int signal_set_handler(process_t* process, int sig, signal_handler_t handler);
 int signal_send(process_t* target, int sig);
 void signal_dispatch(process_t* process);
 
-#endif
+#endif // SIGNAL_H

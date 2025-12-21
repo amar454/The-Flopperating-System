@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
+static spinlock_t heap_lock;
 static box_t* boxes = NULL;
 static int heap_initialized = 0;
 
@@ -17,23 +17,28 @@ static box_t* heap_create_box(void) {
     }
 
     box_t* box = (box_t*) page;
-    box->next = boxes;
-    box->page = page;
+
+    spinlock_init(&box->lock);
 
     uintptr_t base = (uintptr_t) page;
-    box->total_blocks = BLOCKS_PER_BOX;
 
+    box->page = page;
+    box->total_blocks = BLOCKS_PER_BOX;
     box->map = (uint8_t*) (base + sizeof(box_t));
+    box->data_pointer = (void*) (base + sizeof(box_t) + (BLOCKS_PER_BOX + 7) / 8);
 
     for (int i = 0; i < (BLOCKS_PER_BOX + 7) / 8; i++) {
         box->map[i] = 0;
     }
 
-    box->data_pointer = (void*) (base + sizeof(box_t) + (BLOCKS_PER_BOX + 7) / 8);
+    spinlock(&heap_lock);
+    box->next = boxes;
     boxes = box;
+    spinlock_unlock(&heap_lock, true);
 
     return box;
 }
+
 
 static int heap_map_find_free(uint8_t* map, int total_blocks, int needed) {
     int run = 0;
@@ -74,24 +79,31 @@ static void heap_map_set(uint8_t* map, int start, int count, bool used) {
 }
 
 static void* heap_box_alloc(box_t* box, size_t size) {
+    spinlock(&box->lock);
+
     size_t total = size + OBJECT_ALIGN;
     int needed = (total + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     int start = heap_map_find_free(box->map, box->total_blocks, needed);
 
     if (start < 0) {
+        spinlock_unlock(&box->lock, true);
         return NULL;
     }
 
+    // set object
     heap_map_set(box->map, start, needed, true);
 
     uintptr_t mem = (uintptr_t) box->data_pointer + start * BLOCK_SIZE;
+
     object_t* obj = (object_t*) mem;
     obj->box = box;
     obj->size = size;
 
+    spinlock_unlock(&box->lock, true);
     return (void*) (mem + OBJECT_ALIGN);
 }
+
 
 static int heap_fetch_block_index(box_t* box, void* mem_ptr) {
     uintptr_t base = (uintptr_t) box->data_pointer;
@@ -123,6 +135,7 @@ void heap_init(void) {
 
     boxes = NULL;
 
+    // don't need to do much, just create a box
     if (!heap_create_box()) {
         return;
     }
@@ -152,10 +165,12 @@ void* kmalloc(size_t size) {
         return (void*) ((uintptr_t) mem + OBJECT_ALIGN);
     }
 
+    // shouldn't happen
     if (!heap_initialized) {
         heap_init();
     }
 
+    // search for boxes until a box with appropriate size free is found
     for (box_t* b = boxes; b; b = b->next) {
         void* r = heap_box_alloc(b, size);
         if (r) {

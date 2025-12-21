@@ -30,151 +30,14 @@ You should have received a copy of the GNU General Public License along with Flo
 uint64_t sched_ticks_counter;
 
 extern process_t* current_process;
-static reaper_descriptor_t reaper_desc;
 
 static void idle_thread_loop() {
     for (;;) {
     }
 }
 
-static void sched_reaper_remove_from_sleep_queue(thread_t* thread) {
-    if (!thread || !sched.sleep_queue) {
-        return;
-    }
-
-    spinlock(&sched.sleep_queue->lock);
-
-    thread_t* previous_thread = NULL;
-    thread_t* current_thread = sched.sleep_queue->head;
-
-    while (current_thread) {
-        thread_t* next_thread = current_thread->next;
-
-        if (current_thread == thread) {
-            if (previous_thread) {
-                previous_thread->next = next_thread;
-            } else {
-                sched.sleep_queue->head = next_thread;
-            }
-
-            if (current_thread == sched.sleep_queue->tail) {
-                sched.sleep_queue->tail = previous_thread;
-            }
-
-            sched.sleep_queue->count--;
-            current_thread->next = NULL;
-            break;
-        }
-
-        previous_thread = current_thread;
-        current_thread = next_thread;
-    }
-
-    spinlock_unlock(&sched.sleep_queue->lock, true);
-}
-
-static void sched_reaper_enqueue_ready(thread_t* thread) {
-    if (!thread)
-        return;
-
-    thread->thread_state = THREAD_READY;
-    sched_enqueue(sched.ready_queue, thread);
-}
-
-void sched_wake_reaper(void) {
-    if (!sched.reaper_thread)
-        return;
-
-    thread_t* reaper_thread = sched.reaper_thread;
-    atomic_store(&reaper_desc.wake_signal.state, 1);
-
-    if (reaper_thread->thread_state == THREAD_RUNNING || reaper_thread->thread_state == THREAD_READY)
-        return;
-
-    if (reaper_thread->thread_state == THREAD_SLEEPING) {
-        sched_reaper_remove_from_sleep_queue(reaper_thread);
-        sched_reaper_enqueue_ready(reaper_thread);
-    }
-}
-
-static thread_t* sched_reaper_dequeue_dead(void) {
-    spinlock(&reaper_desc.lock);
-    thread_t* dead_thread = sched_dequeue(&reaper_desc.dead_threads);
-    spinlock_unlock(&reaper_desc.lock, true);
-    return dead_thread;
-}
-
-static void sched_reaper_cleanup_thread(thread_t* thread) {
-    if (!thread)
-        return;
-
-    if (thread->kernel_stack)
-        kfree(thread->kernel_stack, 4096);
-
-    if (thread->user && thread->process)
-        sched_remove(thread->process->threads, thread);
-
-    kfree(thread, sizeof(thread_t));
-}
-
-static void reaper_thread_main(void) {
-    while (reaper_desc.running) {
-        signal_wait(&reaper_desc.wake_signal);
-
-        while (1) {
-            thread_t* dead_thread = sched_reaper_dequeue_dead();
-            if (!dead_thread)
-                break;
-
-            sched_reaper_cleanup_thread(dead_thread);
-        }
-
-        sched_yield();
-    }
-}
-
 static thread_t*
 sched_internal_init_thread(void (*entry)(void), unsigned int priority, char* name, int user, process_t* process);
-
-void reaper_init(void) {
-    flop_memset(&reaper_desc, 0, sizeof(reaper_desc));
-
-    spinlock_init(&reaper_desc.lock);
-    signal_init(&reaper_desc.wake_signal);
-
-    reaper_desc.running = 1;
-    flop_memset(&reaper_desc.dead_threads, 0, sizeof(reaper_desc.dead_threads));
-    spinlock_init(&reaper_desc.dead_threads.lock);
-    reaper_desc.dead_threads.name = "reaper_dead";
-
-    reaper_desc.reaper_thread = sched_internal_init_thread(reaper_thread_main, 1, "reaper", 0, NULL);
-    sched_enqueue(sched.ready_queue, reaper_desc.reaper_thread);
-    sched.reaper_thread = reaper_desc.reaper_thread;
-}
-
-void sched_add_dead_thread(thread_t* thread) {
-    if (!thread)
-        return;
-
-    spinlock(&reaper_desc.lock);
-    sched_enqueue(&reaper_desc.dead_threads, thread);
-    spinlock_unlock(&reaper_desc.lock, true);
-
-    signal_send(&reaper_desc.wake_signal, &sched_wake_reaper);
-}
-
-size_t sched_dead_thread_count(void) {
-    size_t count = 0;
-    spinlock(&reaper_desc.lock);
-    count = reaper_desc.dead_threads.count;
-    spinlock_unlock(&reaper_desc.lock, true);
-    return count;
-}
-
-void sched_stop_reaper(void) {
-    reaper_desc.running = 0;
-    signal_send(&reaper_desc.wake_signal, &sched_wake_reaper);
-}
 
 static void stealer_thread_entry() {}
 
@@ -501,19 +364,6 @@ thread_t* sched_create_user_thread(void (*entry)(void), unsigned priority, char*
     return new_thread;
 }
 
-void reaper_enqueue(thread_t* thread) {
-    if (!thread) {
-        log("reaper: enqueue null thread\n", RED);
-        return;
-    }
-
-    thread->thread_state = THREAD_DEAD;
-
-    spinlock(&reaper_desc.lock);
-    sched_enqueue(&reaper_desc.dead_threads, thread);
-    spinlock_unlock(&reaper_desc.lock, true);
-}
-
 extern process_t* current_process;
 
 void sched_thread_list_add(thread_t* thread, thread_list_t* list) {
@@ -697,7 +547,6 @@ thread_t* sched_current_thread(void) {
 
 void sched_thread_exit(void) {
     thread_t* current = sched_current_thread();
-    reaper_enqueue(current);
     sched_yield();
 }
 

@@ -5,13 +5,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 typedef struct box box_t;
-
+#include "../task/sync/spinlock.h"
 typedef struct box {
     box_t* next;
     void* page;
     void* data_pointer;
     uint8_t* map;
     int total_blocks;
+    spinlock_t lock;
 } box_t;
 
 typedef struct {

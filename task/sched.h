@@ -57,7 +57,6 @@ typedef struct reaper_descriptor {
     thread_list_t dead_threads;
     spinlock_t lock;
     int running;
-    signal_t wake_signal;
     thread_t* reaper_thread;
 } reaper_descriptor_t;
 

@@ -1,7 +1,6 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
-#pragma once
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -9,9 +8,10 @@
 #include "../mem/alloc.h"
 #include "../mem/pmm.h"
 #include "../mem/vmm.h"
-#include "ipc/signal.h"
 #include "../fs/vfs/vfs.h"
 #include "sched.h"
+#include "ipc/signal.h"
+
 typedef struct process process_t;
 typedef signed int pid_t;
 typedef int uid_t;

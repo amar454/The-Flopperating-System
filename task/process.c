@@ -13,7 +13,6 @@ You should have received a copy of the GNU General Public License along with Flo
 */
 
 #include "sched.h"
-#include "ipc/signal.h"
 #include "../mem/alloc.h"
 #include "../mem/pmm.h"
 #include "../mem/paging.h"
@@ -408,11 +407,6 @@ int proc_create_init_process() {
     log("init_process successfully created\n", GREEN);
     return 0;
 }
-
-#include "signal.h"
-#include "../sched.h"
-#include "../process.h"
-#include "../vfs/vfs.h"
 
 pid_t proc_getpid(process_t* process) {
     if (!process)

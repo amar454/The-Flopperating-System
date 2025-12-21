@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#pragma once
+#include "../task/sync/spinlock.h"
 
 struct syscall_args {
     uint32_t a1;
@@ -94,14 +96,14 @@ typedef struct syscall_table {
     int (*sys_copy_file_range)(struct syscall_args* args);
     int (*sys_mprotect)(struct syscall_args* args);
     int (*sys_mremap)(struct syscall_args* args);
-    struct vfs_node* (*sys_getcwd)(struct syscall_args* args);
-    pid_t (*sys_fork)(struct syscall_args* args);
-    uid_t (*sys_getuid)(struct syscall_args* args);
-    pid_t (*sys_getgid)(struct syscall_args* args);
-    uid_t (*sys_geteuid)(struct syscall_args* args);
-    pid_t (*sys_getpid)(struct syscall_args* args);
-    pid_t (*sys_clone)(struct syscall_args* args);
-    pid_t (*sys_getsid)(struct syscall_args* args);
+    int (*sys_getcwd)(struct syscall_args* args);
+    int (*sys_fork)(struct syscall_args* args);
+    int (*sys_getuid)(struct syscall_args* args);
+    int (*sys_getgid)(struct syscall_args* args);
+    int (*sys_geteuid)(struct syscall_args* args);
+    int (*sys_getpid)(struct syscall_args* args);
+    int (*sys_clone)(struct syscall_args* args);
+    int (*sys_getsid)(struct syscall_args* args);
 } syscall_table_t;
 
 int syscall(syscall_num_t num, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);
