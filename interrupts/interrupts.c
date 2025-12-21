@@ -48,8 +48,6 @@ typedef struct interrupt_frame {
     uint32_t ss;
 } interrupt_frame_t;
 
-void interrupts_common(interrupt_frame_t* frame);
-
 void interrupts_common(interrupt_frame_t* f) {
     switch (f->int_no) {
         case 0:
