@@ -40,6 +40,16 @@ static inline int pushlock_try_lock(pushlock_t* pl, process_t* owner) {
     return 0;
 }
 
+static inline int pushlock_fast_path(pushlock_t* pl, process_t* owner) {
+    unsigned expected = 0;
+    if (atomic_compare_exchange_strong_explicit(
+            &pl->state, &expected, PUSHLOCK_LOCKED, memory_order_acquire, memory_order_relaxed)) {
+        pl->owner = owner;
+        return 1;
+    }
+    return 0;
+}
+
 // grab wait lock,
 // mark waiters as existing,
 // enqueue current thread,
@@ -48,11 +58,7 @@ static inline void pushlock_lock(pushlock_t* pl, process_t* owner) {
     thread_t* t = current_thread;
 
     for (;;) {
-        unsigned expected = 0;
-        // fast path
-        if (atomic_compare_exchange_strong_explicit(
-                &pl->state, &expected, PUSHLOCK_LOCKED, memory_order_acquire, memory_order_relaxed)) {
-            pl->owner = owner;
+        if (pushlock_fast_path(pl, owner)) {
             return;
         }
 
@@ -61,10 +67,7 @@ static inline void pushlock_lock(pushlock_t* pl, process_t* owner) {
 
         // recheck state once we hold the wait lock
         // because another thread might've released it meanwhile
-        unsigned state = atomic_load_explicit(&pl->state, memory_order_relaxed);
-        if ((state & PUSHLOCK_LOCKED) == 0) {
-            // the locked got unlock while we were grabbing the wait lock
-            // so we can try again
+        if (!(atomic_load_explicit(&pl->state, memory_order_relaxed) & PUSHLOCK_LOCKED)) {
             spinlock_unlock(&pl->wait_lock, true);
             continue;
         }
@@ -74,10 +77,11 @@ static inline void pushlock_lock(pushlock_t* pl, process_t* owner) {
         atomic_fetch_or_explicit(&pl->state, PUSHLOCK_WAITERS, memory_order_relaxed);
         sched_thread_list_add(t, &pl->wait_queue);
 
+        sched_block(); // todo: race condition here
+
         // queue entry is visible
         // let someone else use the wait lock
         spinlock_unlock(&pl->wait_lock, true);
-        sched_block();
     }
 }
 
