@@ -27,8 +27,9 @@ static inline uint32_t page_offset(uintptr_t va) {
 }
 
 #define RECURSIVE_ADDR 0xFFC00000
-#define RECURSIVE_PT(pdi) ((uint32_t*) (RECURSIVE_ADDR + (pdi) *PAGE_SIZE))
+#define RECURSIVE_PT(pdi) ((uint32_t*) (RECURSIVE_ADDR + (pdi) * PAGE_SIZE))
 
+// allocate a virtual address
 uintptr_t vmm_alloc(vmm_region_t* region, size_t pages, uint32_t flags) {
     if (!region || pages == 0) {
         log("vmm_alloc: invalid region or zero pages\n", RED);
@@ -53,6 +54,7 @@ uintptr_t vmm_alloc(vmm_region_t* region, size_t pages, uint32_t flags) {
     return va;
 }
 
+// free a virtual address
 void vmm_free(vmm_region_t* region, uintptr_t va, size_t pages) {
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = vmm_resolve(region, va + i * PAGE_SIZE);
@@ -63,6 +65,7 @@ void vmm_free(vmm_region_t* region, uintptr_t va, size_t pages) {
     }
 }
 
+// map a page to a virtual address
 int vmm_map(vmm_region_t* region, uintptr_t va, uintptr_t pa, uint32_t flags) {
     uint32_t pdi = pd_index(va);
     uint32_t pti = pt_index(va);
@@ -82,6 +85,7 @@ int vmm_map(vmm_region_t* region, uintptr_t va, uintptr_t pa, uint32_t flags) {
     return 0;
 }
 
+// unmap a page from a virtual address
 int vmm_unmap(vmm_region_t* region, uintptr_t va) {
     uint32_t pdi = pd_index(va);
     uint32_t pti = pt_index(va);
@@ -94,6 +98,7 @@ int vmm_unmap(vmm_region_t* region, uintptr_t va) {
     return 0;
 }
 
+// resolve a virtual address to a physical address
 uintptr_t vmm_resolve(vmm_region_t* region, uintptr_t va) {
     uint32_t pdi = pd_index(va);
     uint32_t pti = pt_index(va);
@@ -124,6 +129,7 @@ void region_remove(vmm_region_t* region) {
     }
 }
 
+// create a new region descriptor
 vmm_region_t* vmm_region_create(size_t initial_pages, uint32_t flags, uintptr_t* out_va) {
     uintptr_t dir_phys = (uintptr_t) pmm_alloc_page();
     if (!dir_phys) {
@@ -168,6 +174,7 @@ vmm_region_t* vmm_region_create(size_t initial_pages, uint32_t flags, uintptr_t*
     return region;
 }
 
+// destroy a region descriptor
 void vmm_region_destroy(vmm_region_t* region) {
     if (!region) {
         return;
@@ -183,6 +190,7 @@ void vmm_region_destroy(vmm_region_t* region) {
     kfree(region, sizeof(vmm_region_t));
 }
 
+// switch to a region descriptors page directory
 void vmm_switch(vmm_region_t* region) {
     if (!region) {
         return;
@@ -215,6 +223,7 @@ uint32_t* vmm_new_copied_pgdir() {
     return new_dir;
 }
 
+// copy a regions mapping to src
 vmm_region_t* vmm_copy_pagemap(vmm_region_t* src) {
     uint32_t* new_dir = vmm_new_copied_pgdir();
     if (!new_dir) {
@@ -229,6 +238,7 @@ vmm_region_t* vmm_copy_pagemap(vmm_region_t* src) {
     dst->base_va = src->base_va;
     dst->next_free_va = src->next_free_va;
 
+    // iterate and copy page tables
     for (int pdi = 0; pdi < 1024; pdi++) {
         if (!(src->pg_dir[pdi] & PAGE_PRESENT)) {
             continue;
@@ -242,6 +252,7 @@ vmm_region_t* vmm_copy_pagemap(vmm_region_t* src) {
             uint32_t* dst_pt = (uint32_t*) pt_phys;
             flop_memset(dst_pt, 0, PAGE_SIZE);
 
+            // copy frames
             for (int pti = 0; pti < PAGE_ENTRIES; pti++) {
                 if (!(src_pt[pti] & PAGE_PRESENT)) {
                     continue;
@@ -265,12 +276,15 @@ vmm_region_t* vmm_copy_pagemap(vmm_region_t* src) {
     return dst;
 }
 
+// destory a page mapping
 void vmm_nuke_pagemap(vmm_region_t* region) {
+    // iterate a free page tables
     for (int pdi = 0; pdi < 1024; pdi++) {
         if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
             continue;
         } else {
             uint32_t* pt = &pg_tbls[pdi * PAGE_ENTRIES];
+            // free physical frames
             for (int pti = 0; pti < PAGE_ENTRIES; pti++) {
                 if (pt[pti] & PAGE_PRESENT) {
                     pmm_free_page((void*) (pt[pti] & PAGE_MASK));
@@ -308,6 +322,7 @@ size_t vmm_count_regions() {
     return n;
 }
 
+// map a range of virtual addresses to physical addresses
 int vmm_map_range(vmm_region_t* region, uintptr_t va, uintptr_t pa, size_t pages, uint32_t flags) {
     for (size_t i = 0; i < pages; i++) {
         if (vmm_map(region, va + i * PAGE_SIZE, pa + i * PAGE_SIZE, flags) < 0) {
@@ -317,6 +332,7 @@ int vmm_map_range(vmm_region_t* region, uintptr_t va, uintptr_t pa, size_t pages
     return 0;
 }
 
+// unmap a range of virtual addresses from physical addresses
 int vmm_unmap_range(vmm_region_t* region, uintptr_t va, size_t pages) {
     for (size_t i = 0; i < pages; i++) {
         if (vmm_unmap(region, va + i * PAGE_SIZE) < 0) {
@@ -326,6 +342,7 @@ int vmm_unmap_range(vmm_region_t* region, uintptr_t va, size_t pages) {
     return 0;
 }
 
+// protect a memory region with flags
 int vmm_protect(vmm_region_t* region, uintptr_t va, uint32_t flags) {
     uint32_t pdi = pd_index(va);
     uint32_t pti = pt_index(va);
@@ -341,6 +358,7 @@ int vmm_protect(vmm_region_t* region, uintptr_t va, uint32_t flags) {
     return 0;
 }
 
+// get pt of va in region
 uint32_t* vmm_get_pt(vmm_region_t* region, uintptr_t va) {
     uint32_t pdi = pd_index(va);
     if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
