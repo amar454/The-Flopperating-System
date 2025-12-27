@@ -11,7 +11,12 @@ typedef struct spinlock {
     atomic_uint state;
 } spinlock_t;
 
+// store lock state
 static inline void spinlock_init(spinlock_t* lock) {
+    atomic_store(&lock->state, __ATOMIC_RELAXED);
+}
+
+static inline void spinlock_destroy(spinlock_t* lock) {
     atomic_store(&lock->state, __ATOMIC_RELAXED);
 }
 

@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include "../process.h"
 #include "../sched.h"
+#include "../../lib/logging.h"
+#include "../../lib/str.h"
 #include "spinlock.h"
 
 extern thread_t* current_thread;
@@ -30,14 +32,9 @@ static inline void pushlock_init(pushlock_t* pl, char* name) {
     spinlock_init(&pl->wait_lock);
 }
 
-static inline int pushlock_try_lock(pushlock_t* pl, process_t* owner) {
-    unsigned expected = 0;
-    if (atomic_compare_exchange_strong_explicit(
-            &pl->state, &expected, PUSHLOCK_LOCKED, memory_order_acquire, memory_order_relaxed)) {
-        pl->owner = owner;
-        return 1;
-    }
-    return 0;
+static inline void pushlock_destroy(pushlock_t* pl) {
+    spinlock_destroy(&pl->wait_lock);
+    spinlock_destroy(&pl->wait_queue.lock);
 }
 
 static inline int pushlock_fast_path(pushlock_t* pl, process_t* owner) {
@@ -87,8 +84,9 @@ static inline void pushlock_lock(pushlock_t* pl, process_t* owner) {
 
 static inline void pushlock_unlock(pushlock_t* pl) {
     thread_t* cur = current_thread;
-    if (!cur || pl->owner != cur->process)
+    if (!cur || pl->owner != cur->process) {
         return;
+    }
     // serialize wait queue
     spinlock(&pl->wait_lock);
 
@@ -114,4 +112,19 @@ static inline void pushlock_unlock(pushlock_t* pl) {
     spinlock_unlock(&pl->wait_lock, true);
 }
 
-#endif
+static inline pushlock_t* pushlock_create_pool(int size) {
+    pushlock_t* pool = (pushlock_t*) kmalloc(size * sizeof(pushlock_t));
+    for (int i = 0; i < size; i++) {
+        char* name = (char*) kmalloc(16);
+        flopsnprintf(name, 16, "pushlock%d", i);
+        pushlock_init(&pool[i], name);
+    }
+    return pool;
+}
+
+static inline void pushlock_destroy_pool(pushlock_t* pool, int size) {
+    for (int i = 0; i < size; i++) {
+        pushlock_destroy(&pool[i]);
+    }
+    kfree(pool, size * sizeof(pushlock_t));
+}

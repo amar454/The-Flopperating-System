@@ -74,6 +74,9 @@ typedef struct thread {
     int user;
     cpu_ctx_t context;
 
+    thread_t* priority_inheritance_owner;
+    thread_t* ts_next;
+
     // priority is the base priority assigned when the thread is created
     // if the thread is starved a priority boost will be added to the effective priority
     // if the effective priority is higher than the base priority
@@ -114,6 +117,7 @@ typedef struct scheduler {
     thread_t* reaper_thread;
     thread_t* stealer_thread;
 } scheduler_t;
+
 void sched_block(void);
 void sched_unblock(thread_t* thread);
 extern scheduler_t sched;
