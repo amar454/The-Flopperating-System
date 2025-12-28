@@ -168,8 +168,9 @@ static thread_list_t thread_list_pool[MAX_PROCESSES];
 static size_t thread_list_index = 0;
 
 static thread_list_t* proc_alloc_thread_list() {
-    if (thread_list_index >= MAX_PROCESSES)
+    if (thread_list_index >= MAX_PROCESSES) {
         return NULL;
+    }
     return &thread_list_pool[thread_list_index++];
 }
 
@@ -409,57 +410,65 @@ int proc_create_init_process() {
 }
 
 pid_t proc_getpid(process_t* process) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
     return process->pid;
 }
 
 int proc_kill(process_t* process) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     return signal_send(process, SIGKILL);
 }
 
 int proc_exit_all_threads(process_t* process) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     return signal_send(process, SIGTERM);
 }
 
 int proc_exit(process_t* process, int status) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     process->exit_status = status;
     return signal_send(process, SIGTERM);
 }
 
 int proc_stop(process_t* process) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     return signal_send(process, SIGSTOP);
 }
 
 int proc_continue(process_t* process) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     return signal_send(process, SIGCONT);
 }
 
 static int proc_copy_fds(process_t* dest, process_t* src) {
-    if (!dest || !src)
+    if (!dest || !src) {
         return -1;
+    }
 
     for (int i = 0; i < MAX_PROC_FDS; ++i) {
         flop_memcpy(&dest->fds[i], &src->fds[i], sizeof(struct vfs_file_descriptor));
 
         void* node_ptr = dest->fds[i].node;
-        if (!node_ptr)
+        if (!node_ptr) {
             continue;
+        }
 
         if (((struct vfs_node*) node_ptr)->pipe.data == (void*) &((struct vfs_node*) node_ptr)->pipe) {
             pipe_t* p = (pipe_t*) node_ptr;
@@ -745,8 +754,9 @@ process_t* proc_get_process_by_pid(pid_t pid) {
 }
 
 static void proc_reparent_children(process_t* old_parent, process_t* new_parent) {
-    if (!old_parent || !new_parent)
+    if (!old_parent || !new_parent) {
         return;
+    }
 
     process_t* iter_child = old_parent->children;
     process_t* next_child;
@@ -761,14 +771,15 @@ static void proc_reparent_children(process_t* old_parent, process_t* new_parent)
 }
 
 static int proc_terminate_all_threads(process_t* process) {
-    if (!process || !process->threads)
+    if (!process || !process->threads) {
         return -1;
+    }
 
     thread_t* iter_thread = process->threads->head;
     while (iter_thread) {
         thread_t* next_thread = iter_thread->next;
-        sched_remove(sched.ready_queue, iter_thread);
-        sched_remove(sched.sleep_queue, iter_thread);
+        sched_remove(&sched.ready_queue, iter_thread);
+        sched_remove(&sched.sleep_queue, iter_thread);
         iter_thread = next_thread;
     }
 
@@ -778,8 +789,9 @@ static int proc_terminate_all_threads(process_t* process) {
 }
 
 static int proc_clean(process_t* process) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     if (process->cwd) {
         vfs_close(process->cwd);
@@ -805,8 +817,9 @@ static int proc_clean(process_t* process) {
 }
 
 static int proc_remove_process_from_table(process_t* process) {
-    if (!proc_tbl || !proc_tbl->processes || !process)
+    if (!proc_tbl || !proc_tbl->processes || !process) {
         return -1;
+    }
 
     spinlock(&proc_tbl->proc_table_lock);
 
@@ -815,10 +828,11 @@ static int proc_remove_process_from_table(process_t* process) {
 
     while (iter_process) {
         if (iter_process == process) {
-            if (prev_process)
+            if (prev_process) {
                 prev_process->siblings = iter_process->siblings;
-            else
+            } else {
                 proc_tbl->processes = iter_process->siblings;
+            }
 
             spinlock_unlock(&proc_tbl->proc_table_lock, true);
             return 0;
@@ -833,16 +847,18 @@ static int proc_remove_process_from_table(process_t* process) {
 }
 
 static int proc_terminate_process(process_t* process) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     proc_terminate_all_threads(process);
     proc_clean(process);
     proc_remove_process_from_table(process);
 
     spinlock(&proc_tbl->proc_table_lock);
-    if (proc_info_local && proc_info_local->process_count > 0)
+    if (proc_info_local && proc_info_local->process_count > 0) {
         proc_info_local->process_count--;
+    }
     spinlock_unlock(&proc_tbl->proc_table_lock, true);
 
     kfree(process, sizeof(process_t));
@@ -850,8 +866,9 @@ static int proc_terminate_process(process_t* process) {
 }
 
 static int proc_kill_all_children(process_t* parent) {
-    if (!parent)
+    if (!parent) {
         return -1;
+    }
 
     process_t* iter_child = parent->children;
     process_t* next_child;
@@ -867,39 +884,46 @@ static int proc_kill_all_children(process_t* parent) {
 }
 
 static int proc_copy_process_memory(process_t* source_process, process_t* target_process) {
-    if (!source_process || !target_process)
+    if (!source_process || !target_process) {
         return -1;
+    }
 
-    if (!source_process->region)
+    if (!source_process->region) {
         return -1;
+    }
 
     target_process->region = vmm_copy_pagemap(source_process->region);
-    if (!target_process->region)
+    if (!target_process->region) {
         return -1;
+    }
 
     target_process->mem_usage = source_process->mem_usage;
     return 0;
 }
 
 static int proc_duplicate_process_fds(process_t* source_process, process_t* target_process) {
-    if (!source_process || !target_process)
+    if (!source_process || !target_process) {
         return -1;
+    }
 
     for (int i = 0; i < MAX_PROC_FDS; ++i) {
         flop_memcpy(&target_process->fds[i], &source_process->fds[i], sizeof(struct vfs_file_descriptor));
-        if (target_process->fds[i].node)
+        if (target_process->fds[i].node) {
             refcount_inc_not_zero(&target_process->fds[i].node->refcount);
+        }
     }
     return 0;
 }
 
 static int proc_set_parent_process(process_t* process, process_t* parent) {
-    if (!process)
+    if (!process) {
         return -1;
+    }
 
     process->parent = parent;
-    if (parent)
+    if (parent) {
         proc_family_add_child(parent, process);
+    }
 
     return 0;
 }

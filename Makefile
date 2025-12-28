@@ -37,13 +37,13 @@ LD_FLAGS = -m elf_i386 -T kernel/linker.ld
 
 # Source files
 SCHED_SRC = task/sched.c task/tss.c task/process.c task/ipc/pipe.c task/ipc/signal.c
-MEM_SRC = mem/vmm.c mem/pmm.c mem/paging.c mem/utils.c mem/gdt.c mem/alloc.c
+MEM_SRC = mem/vmm.c mem/pmm.c mem/paging.c mem/utils.c mem/gdt.c mem/alloc.c mem/early.h
 DRIVER_SRC = drivers/vga/vgahandler.c drivers/keyboard/keyboard.c drivers/time/floptime.c \
              drivers/io/io.c drivers/vga/framebuffer.c drivers/acpi/acpi.c drivers/mouse/ps2ms.c
 FS_SRC = fs/tmpflopfs/tmpflopfs.c fs/vfs/vfs.c fs/procfs/procfs.c
 LIB_SRC = lib/str.c lib/flopmath.c lib/logging.c
 APP_SRC = apps/echo.c apps/dsp/dsp.c
-OTHER_SRC = kernel/kernel.c multiboot/multiboot.c sys/syscall.c
+OTHER_SRC = kernel/kernel.c multiboot/multiboot.c sys/syscall.c init/init.c
 ASM_SRC = kernel/entry.asm task/usermode_entry.asm task/ctx.asm interrupts/interrupts_asm.asm sys/syscall_asm.asm
 FLANTERM_SRC = flanterm/src/flanterm.c flanterm/src/flanterm_backends/fb.c
 

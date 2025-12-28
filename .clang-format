@@ -9,6 +9,9 @@ AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 AllowShortEnumsOnASingleLine: false
+
+InsertBraces: true
+
 BraceWrapping:
   AfterFunction: false
   AfterControlStatement: false

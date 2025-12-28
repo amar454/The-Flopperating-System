@@ -17,13 +17,15 @@ static struct vfs_fs tmpfs_fs;
 
 static tmpfs_inode_t* tmpfs_inode_new(const char* name, int type) {
     tmpfs_inode_t* n = (tmpfs_inode_t*) kmalloc(sizeof(tmpfs_inode_t));
-    if (!n)
+    if (!n) {
         return NULL;
+    }
     flop_memset(n, 0, sizeof(*n));
     if (name) {
         size_t ln = flopstrlen(name);
-        if (ln >= VFS_MAX_FILE_NAME)
+        if (ln >= VFS_MAX_FILE_NAME) {
             ln = VFS_MAX_FILE_NAME - 1;
+        }
         flopstrcopy(n->name, name, ln + 1);
     }
     n->type = type;
@@ -34,11 +36,13 @@ static tmpfs_inode_t* tmpfs_inode_new(const char* name, int type) {
 }
 
 static void tmpfs_free_node_pages(tmpfs_inode_t* f) {
-    if (!f || !f->pages)
+    if (!f || !f->pages) {
         return;
+    }
     for (size_t i = 0; i < f->page_count; ++i) {
-        if (f->pages[i])
+        if (f->pages[i]) {
             pmm_free_page(f->pages[i]);
+        }
     }
     kfree(f->pages, f->page_count * sizeof(void*));
     f->pages = NULL;
@@ -48,42 +52,49 @@ static void tmpfs_free_node_pages(tmpfs_inode_t* f) {
 
 static int tmpfs_resize_pages(tmpfs_inode_t* f, size_t new_pages) {
     size_t old_pages = f->page_count;
-    if (new_pages == old_pages)
+    if (new_pages == old_pages) {
         return 0;
+    }
 
     void** np = NULL;
     if (new_pages) {
         np = (void**) kmalloc(new_pages * sizeof(void*));
-        if (!np)
+        if (!np) {
             return -1;
+        }
         flop_memset(np, 0, new_pages * sizeof(void*));
     }
 
     size_t keep = (old_pages < new_pages) ? old_pages : new_pages;
-    for (size_t i = 0; i < keep; ++i)
+    for (size_t i = 0; i < keep; ++i) {
         np[i] = f->pages ? f->pages[i] : NULL;
+    }
 
     for (size_t i = new_pages; i < old_pages; ++i) {
-        if (f->pages && f->pages[i])
+        if (f->pages && f->pages[i]) {
             pmm_free_page(f->pages[i]);
+        }
     }
 
     for (size_t i = old_pages; i < new_pages; ++i) {
         np[i] = pmm_alloc_page();
         if (!np[i]) {
             for (size_t j = old_pages; j < i; ++j) {
-                if (np[j])
+                if (np[j]) {
                     pmm_free_page(np[j]);
+                }
             }
-            if (np)
+            if (np) {
                 kfree(np, new_pages * sizeof(void*));
+            }
             return -1;
         }
         flop_memset(np[i], 0, PAGE_SIZE);
     }
 
-    if (f->pages)
+    if (f->pages) {
         kfree(f->pages, old_pages * sizeof(void*));
+    }
 
     f->pages = np;
     f->page_count = new_pages;
@@ -100,8 +111,9 @@ static inline int tmpfs_is_sep(char c) {
 
 static tmpfs_dirent_t* tmpfs_dirent_prepend(tmpfs_inode_t* dir, tmpfs_inode_t* child) {
     tmpfs_dirent_t* d = (tmpfs_dirent_t*) kmalloc(sizeof(tmpfs_dirent_t));
-    if (!d)
+    if (!d) {
         return NULL;
+    }
     d->child = child;
     d->next = dir->children;
     dir->children = d;
@@ -112,10 +124,11 @@ static void tmpfs_dirent_remove(tmpfs_inode_t* dir, tmpfs_inode_t* child) {
     tmpfs_dirent_t *p = NULL, *c = dir->children;
     while (c) {
         if (c->child == child) {
-            if (p)
+            if (p) {
                 p->next = c->next;
-            else
+            } else {
                 dir->children = c->next;
+            }
             kfree(c, sizeof(*c));
             break;
         }
@@ -127,8 +140,9 @@ static void tmpfs_dirent_remove(tmpfs_inode_t* dir, tmpfs_inode_t* child) {
 static tmpfs_inode_t* tmpfs_find_child(tmpfs_inode_t* dir, const char* name) {
     tmpfs_dirent_t* d = dir->children;
     while (d) {
-        if (flopstrcmp(d->child->name, name) == 0)
+        if (flopstrcmp(d->child->name, name) == 0) {
             return d->child;
+        }
         d = d->next;
     }
     return NULL;
@@ -143,13 +157,16 @@ static tmpfs_inode_t* tmpfs_parent_and_leaf(tmpfs_inode_t* root, const char* pat
     const char* last = NULL;
     const char* it = p;
     while (*it) {
-        while (*it && tmpfs_is_sep(*it))
+        while (*it && tmpfs_is_sep(*it)) {
             it++;
-        if (!*it)
+        }
+        if (!*it) {
             break;
+        }
         last = it;
-        while (*it && !tmpfs_is_sep(*it))
+        while (*it && !tmpfs_is_sep(*it)) {
             it++;
+        }
     }
     if (!last) {
         leaf_out[0] = '\0';
@@ -167,26 +184,32 @@ static tmpfs_inode_t* tmpfs_parent_and_leaf(tmpfs_inode_t* root, const char* pat
     tmpfs_inode_t* parent = NULL;
     cur = root;
     while (*it) {
-        while (*it && tmpfs_is_sep(*it))
+        while (*it && tmpfs_is_sep(*it)) {
             it++;
-        if (!*it)
+        }
+        if (!*it) {
             break;
+        }
         const char* start = it;
-        while (*it && !tmpfs_is_sep(*it))
+        while (*it && !tmpfs_is_sep(*it)) {
             it++;
+        }
         size_t seglen = (size_t) (it - start);
-        if (seglen == flopstrlen(leaf) && flopstrncmp(start, leaf, seglen) == 0 && !*it)
+        if (seglen == flopstrlen(leaf) && flopstrncmp(start, leaf, seglen) == 0 && !*it) {
             break;
+        }
         char seg[VFS_MAX_FILE_NAME];
         size_t m = seglen;
-        if (m >= sizeof(seg))
+        if (m >= sizeof(seg)) {
             m = sizeof(seg) - 1;
+        }
         flop_memcpy(seg, start, m);
         seg[m] = '\0';
         parent = cur;
         tmpfs_inode_t* nxt = tmpfs_find_child(cur, seg);
-        if (!nxt)
+        if (!nxt) {
             return NULL;
+        }
         cur = nxt;
     }
     flopstrcopy(leaf_out, leaf, flopstrlen(leaf) + 1);
@@ -194,8 +217,9 @@ static tmpfs_inode_t* tmpfs_parent_and_leaf(tmpfs_inode_t* root, const char* pat
 }
 
 static void tmpfs_free_tree(tmpfs_inode_t* n) {
-    if (!n)
+    if (!n) {
         return;
+    }
     tmpfs_dirent_t* d = n->children;
     while (d) {
         tmpfs_dirent_t* nx = d->next;
@@ -203,8 +227,9 @@ static void tmpfs_free_tree(tmpfs_inode_t* n) {
         kfree(d, sizeof(*d));
         d = nx;
     }
-    if (n->type == VFS_FILE)
+    if (n->type == VFS_FILE) {
         tmpfs_free_node_pages(n);
+    }
     kfree(n, sizeof(*n));
 }
 
@@ -215,8 +240,9 @@ static void* tmpfs_mount(char* device, char* mount_point, int type) {
     (void) mount_point;
     (void) type;
     tmpfs_super_t* sb = (tmpfs_super_t*) kmalloc(sizeof(tmpfs_super_t));
-    if (!sb)
+    if (!sb) {
         return NULL;
+    }
 
     refcount_init(&sb->refcount);
     static spinlock_t sb_initializer = SPINLOCK_INIT;
@@ -239,8 +265,9 @@ static void* tmpfs_mount(char* device, char* mount_point, int type) {
 static int tmpfs_unmount(struct vfs_mountpoint* mp, char* device) {
     (void) device;
     tmpfs_super_t* sb = (tmpfs_super_t*) mp->data_pointer;
-    if (!sb)
+    if (!sb) {
         return -1;
+    }
 
     bool interrupt_state = spinlock(&sb->lock);
 
@@ -258,8 +285,9 @@ static int tmpfs_unmount(struct vfs_mountpoint* mp, char* device) {
 
 static struct vfs_node* tmpfs_open(struct vfs_node* node, char* relpath) {
     tmpfs_super_t* sb = (tmpfs_super_t*) node->mountpoint->data_pointer;
-    if (!sb)
+    if (!sb) {
         return NULL;
+    }
     bool super_block_interrupt_state = spinlock(&sb->lock);
 
     tmpfs_inode_t* target_inode = NULL;
@@ -268,16 +296,19 @@ static struct vfs_node* tmpfs_open(struct vfs_node* node, char* relpath) {
         target_inode = sb->root;
     } else {
         const char* p = relpath;
-        if (*p == '/')
+        if (*p == '/') {
             p++;
+        }
         tmpfs_inode_t* cur = sb->root;
         char seg[VFS_MAX_FILE_NAME];
         size_t i = 0;
         while (*p) {
-            while (*p && tmpfs_is_sep(*p))
+            while (*p && tmpfs_is_sep(*p)) {
                 p++;
-            if (!*p)
+            }
+            if (!*p) {
                 break;
+            }
             i = 0;
             while (p[i] && !tmpfs_is_sep(p[i]) && i < sizeof(seg) - 1) {
                 seg[i] = p[i];
@@ -332,14 +363,16 @@ static struct vfs_node* tmpfs_open(struct vfs_node* node, char* relpath) {
 }
 
 static int tmpfs_close(struct vfs_node* node) {
-    if (!node || !node->data_pointer)
+    if (!node || !node->data_pointer) {
         return -1;
+    }
     tmpfs_handle_t* h = (tmpfs_handle_t*) node->data_pointer;
 
     spinlock(&h->inode->lock);
     if (refcount_dec_and_test(&h->inode->refcount)) {
-        if (h->inode->type == VFS_FILE)
+        if (h->inode->type == VFS_FILE) {
             tmpfs_free_node_pages(h->inode);
+        }
         kfree(h->inode, sizeof(*h->inode));
     }
     spinlock_unlock(&h->inode->lock, true);
@@ -350,25 +383,28 @@ static int tmpfs_close(struct vfs_node* node) {
 }
 
 static int tmpfs_seek(struct vfs_node* node, unsigned long offset, unsigned char whence) {
-    if (!node || !node->data_pointer)
+    if (!node || !node->data_pointer) {
         return -1;
+    }
     tmpfs_handle_t* h = (tmpfs_handle_t*) node->data_pointer;
     size_t base = 0;
-    if (whence == VFS_SEEK_STRT)
+    if (whence == VFS_SEEK_STRT) {
         base = 0;
-    else if (whence == VFS_SEEK_CUR)
+    } else if (whence == VFS_SEEK_CUR) {
         base = h->pos;
-    else if (whence == VFS_SEEK_END)
+    } else if (whence == VFS_SEEK_END) {
         base = h->inode->size;
-    else
+    } else {
         return -1;
+    }
     h->pos = base + offset;
     return 0;
 }
 
 static int tmpfs_read(struct vfs_node* node, unsigned char* buffer, unsigned long size) {
-    if (!node || !node->data_pointer)
+    if (!node || !node->data_pointer) {
         return -1;
+    }
     tmpfs_handle_t* h = (tmpfs_handle_t*) node->data_pointer;
     tmpfs_inode_t* f = h->inode;
 
@@ -391,8 +427,9 @@ static int tmpfs_read(struct vfs_node* node, unsigned char* buffer, unsigned lon
         size_t pg_off = off % PAGE_SIZE;
         size_t chunk = PAGE_SIZE - pg_off;
         size_t left = to_read - done;
-        if (chunk > left)
+        if (chunk > left) {
             chunk = left;
+        }
 
         if (pg_idx >= f->page_count || !f->pages[pg_idx]) {
             /* hole (shouldn't happen if size is accurate), treat as zeros */
@@ -412,8 +449,9 @@ static int tmpfs_read(struct vfs_node* node, unsigned char* buffer, unsigned lon
 }
 
 static int tmpfs_write(struct vfs_node* node, unsigned char* buffer, unsigned long size) {
-    if (!node || !node->data_pointer)
+    if (!node || !node->data_pointer) {
         return -1;
+    }
     tmpfs_handle_t* h = (tmpfs_handle_t*) node->data_pointer;
     tmpfs_inode_t* f = h->inode;
 
@@ -427,8 +465,9 @@ static int tmpfs_write(struct vfs_node* node, unsigned char* buffer, unsigned lo
 
     size_t need_pages = tmpfs_ceil_div(endpos, PAGE_SIZE);
     if (need_pages > f->page_count) {
-        if (tmpfs_resize_pages(f, need_pages) != 0)
+        if (tmpfs_resize_pages(f, need_pages) != 0) {
             return -1;
+        }
     }
 
     if (h->pos > f->size) {
@@ -438,8 +477,9 @@ static int tmpfs_write(struct vfs_node* node, unsigned char* buffer, unsigned lo
             size_t pg_off = z % PAGE_SIZE;
             size_t chunk = PAGE_SIZE - pg_off;
             size_t left = h->pos - z;
-            if (chunk > left)
+            if (chunk > left) {
                 chunk = left;
+            }
             if (pg_idx < f->page_count && f->pages[pg_idx]) {
                 flop_memset((uint8_t*) f->pages[pg_idx] + pg_off, 0, chunk);
             }
@@ -455,13 +495,15 @@ static int tmpfs_write(struct vfs_node* node, unsigned char* buffer, unsigned lo
         size_t pg_off = off % PAGE_SIZE;
         size_t chunk = PAGE_SIZE - pg_off;
         size_t left = size - done;
-        if (chunk > left)
+        if (chunk > left) {
             chunk = left;
+        }
 
         if (pg_idx >= f->page_count || !f->pages[pg_idx]) {
             /* allocate missing page, shouldn't happen after resize, but always use protection :^) */
-            if (tmpfs_resize_pages(f, pg_idx + 1) != 0)
+            if (tmpfs_resize_pages(f, pg_idx + 1) != 0) {
                 return -1;
+            }
         }
 
         flop_memcpy((uint8_t*) f->pages[pg_idx] + pg_off, (uint8_t*) buffer + done, chunk);
@@ -471,8 +513,9 @@ static int tmpfs_write(struct vfs_node* node, unsigned char* buffer, unsigned lo
     }
 
     h->pos += size;
-    if (f->size < h->pos)
+    if (f->size < h->pos) {
         f->size = h->pos;
+    }
 
     spinlock_unlock(&f->lock, true);
     return (int) size;
@@ -480,8 +523,9 @@ static int tmpfs_write(struct vfs_node* node, unsigned char* buffer, unsigned lo
 
 static int tmpfs_create(struct vfs_mountpoint* mp, char* relpath) {
     tmpfs_super_t* sb = (tmpfs_super_t*) mp->data_pointer;
-    if (!relpath || relpath[0] == '\0' || flopstrcmp(relpath, "/") == 0)
+    if (!relpath || relpath[0] == '\0' || flopstrcmp(relpath, "/") == 0) {
         return -1;
+    }
 
     bool sb_ints = spinlock(&sb->lock);
     char leaf[VFS_MAX_FILE_NAME];
@@ -518,8 +562,9 @@ static int tmpfs_create(struct vfs_mountpoint* mp, char* relpath) {
 
 static int tmpfs_delete(struct vfs_mountpoint* mp, char* relpath) {
     tmpfs_super_t* sb = (tmpfs_super_t*) mp->data_pointer;
-    if (!relpath || !relpath[0] || flopstrcmp(relpath, "/") == 0)
+    if (!relpath || !relpath[0] || flopstrcmp(relpath, "/") == 0) {
         return -1;
+    }
 
     bool sb_ints = spinlock(&sb->lock);
     char leaf[VFS_MAX_FILE_NAME];
@@ -545,8 +590,9 @@ static int tmpfs_delete(struct vfs_mountpoint* mp, char* relpath) {
         return -1;
     }
     tmpfs_dirent_remove(parent, target_inode);
-    if (target_inode->type == VFS_FILE)
+    if (target_inode->type == VFS_FILE) {
         tmpfs_free_node_pages(target_inode);
+    }
     kfree(target_inode, sizeof(*target_inode));
     spinlock_unlock(&target_inode->lock, t_ints);
     spinlock_unlock(&parent->lock, parent_ints);
@@ -556,8 +602,9 @@ static int tmpfs_delete(struct vfs_mountpoint* mp, char* relpath) {
 
 static int tmpfs_rename(struct vfs_mountpoint* mp, char* oldp, char* newp) {
     tmpfs_super_t* sb = (tmpfs_super_t*) mp->data_pointer;
-    if (!oldp || !newp)
+    if (!oldp || !newp) {
         return -1;
+    }
 
     bool sb_ints = spinlock(&sb->lock);
 
@@ -610,16 +657,19 @@ static struct vfs_directory_list* tmpfs_listdir(struct vfs_mountpoint* mp, char*
     tmpfs_inode_t* dir = sb->root;
     if (relpath && flopstrcmp(relpath, "/") != 0) {
         const char* p = relpath;
-        if (*p == '/')
+        if (*p == '/') {
             p++;
+        }
         char seg[VFS_MAX_FILE_NAME];
         size_t i = 0;
         tmpfs_inode_t* cur = sb->root;
         while (*p) {
-            while (*p && tmpfs_is_sep(*p))
+            while (*p && tmpfs_is_sep(*p)) {
                 p++;
-            if (!*p)
+            }
+            if (!*p) {
                 break;
+            }
             i = 0;
             while (p[i] && !tmpfs_is_sep(p[i]) && i < sizeof(seg) - 1) {
                 seg[i] = p[i];
@@ -654,15 +704,17 @@ static struct vfs_directory_list* tmpfs_listdir(struct vfs_mountpoint* mp, char*
     tmpfs_dirent_t* d = dir->children;
     while (d) {
         struct vfs_directory_entry* e = (struct vfs_directory_entry*) kmalloc(sizeof(struct vfs_directory_entry));
-        if (!e)
+        if (!e) {
             break;
+        }
         flop_memset(e, 0, sizeof(*e));
         flopstrcopy(e->name, d->child->name, flopstrlen(d->child->name) + 1);
         e->type = d->child->type;
-        if (!list->head)
+        if (!list->head) {
             list->head = e;
-        else
+        } else {
             list->tail->next = e;
+        }
         list->tail = e;
         d = d->next;
     }
@@ -673,12 +725,14 @@ static struct vfs_directory_list* tmpfs_listdir(struct vfs_mountpoint* mp, char*
 }
 
 static int tmpfs_ctrl(struct vfs_node* node, unsigned long cmd, unsigned long arg) {
-    if (!node || !node->data_pointer)
+    if (!node || !node->data_pointer) {
         return -1;
+    }
     tmpfs_handle_t* h = (tmpfs_handle_t*) node->data_pointer;
     tmpfs_inode_t* f = h->inode;
-    if (!f)
+    if (!f) {
         return -1;
+    }
 
     bool ints = spinlock(&f->lock);
     int ret = -1;
@@ -709,8 +763,9 @@ static int tmpfs_ctrl(struct vfs_node* node, unsigned long cmd, unsigned long ar
                 f->size = new_size;
                 ret = 0;
             }
-            if (h->pos > new_size)
+            if (h->pos > new_size) {
                 h->pos = new_size;
+            }
             break;
         }
         case TMPFS_CMD_TRUNCATE: {
@@ -725,8 +780,9 @@ static int tmpfs_ctrl(struct vfs_node* node, unsigned long cmd, unsigned long ar
                 }
                 f->page_count = need_pages;
                 f->size = new_size;
-                if (h->pos > new_size)
+                if (h->pos > new_size) {
                     h->pos = new_size;
+                }
             }
             ret = 0;
             break;

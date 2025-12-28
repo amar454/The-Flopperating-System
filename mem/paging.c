@@ -23,16 +23,19 @@ You should have received a copy of the GNU General Public License along with Flo
 
 static inline uintptr_t kvirt_to_phys(void* v) {
     uintptr_t va = (uintptr_t) v;
-    if (KERNEL_VIRT_BASE == 0)
+    if (KERNEL_VIRT_BASE == 0) {
         return va;
-    if (va >= KERNEL_VIRT_BASE)
+    }
+    if (va >= KERNEL_VIRT_BASE) {
         return va - KERNEL_VIRT_BASE;
+    }
     return va;
 }
 
 static inline void* kphys_to_virt(uintptr_t p) {
-    if (KERNEL_VIRT_BASE == 0)
+    if (KERNEL_VIRT_BASE == 0) {
         return (void*) p;
+    }
     return (void*) (p + KERNEL_VIRT_BASE);
 }
 
@@ -154,24 +157,44 @@ static int paging_init_page_tables() {
 }
 
 static int paging_init_recursive_mapping() {
+    // map pt for 1022nd entry in pd
     pd[1022] = (uint32_t) (pt1022_phys & PAGE_MASK) | PAGE_PRESENT | PAGE_RW;
+
+    // resolve physical address of pt1022
     uint32_t* pt1022 = (uint32_t*) kphys_to_virt(pt1022_phys);
+
+    // zero out pt1022
     zero_area(pt1022);
+
+    // map the pd itself in the 1023rd entry (recursive mapping)
     pd[1023] = (uint32_t) (pd_phys & PAGE_MASK) | PAGE_PRESENT | PAGE_RW;
+
+    // set last entry of pt1022 to point to pd_phys for recursive mapping
     pt1022[1023] = (uint32_t) (pd_phys & PAGE_MASK) | PAGE_PRESENT | PAGE_RW;
     return 0;
 }
 
 static int paging_init_paging_stack() {
+    // get index in pd for kernel paging stack virtual address
     uint32_t pt_idx = page_dir_index_from_va(KERNEL_STACK_PAGING_ADDR);
+
+    // allocate new page table for kernel paging stack
     uintptr_t new_pt_phys = (uintptr_t) pmm_alloc_page();
     if (!new_pt_phys) {
         log("pmm_alloc_page failed for new_pt\n", RED);
         return -1;
     }
+
+    // set pd entry to point to to new table
     pg_dir[pt_idx] = (uint32_t) (new_pt_phys & PAGE_MASK) | PAGE_PRESENT | PAGE_RW;
+
+    // get virtual address of new page table
     uint32_t* new_pt_virt = &pg_tbls[pt_idx * PAGE_ENTRIES];
+
+    // zero out new page table
     zero_area(new_pt_virt);
+
+    // invalidate page table entry in TLB
     invlpg((void*) KERNEL_STACK_PAGING_ADDR);
     return 0;
 }

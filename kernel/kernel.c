@@ -1,4 +1,4 @@
-/* 
+/*
 
 Copyright 2024, 2025 Amar Djulovic <aaamargml@gmail.com>
 
@@ -16,12 +16,12 @@ kernel.c:
 
     This is the kernel of floppaOS, a free and open-source 32-bit operating system.
     This is the prerelease alpha-v0.1.3 code, still in development.
-    It is multiboot compliant, and takes the multiboot info pointer and magic number in kmain. 
-    
+    It is multiboot compliant, and takes the multiboot info pointer and magic number in kmain.
+
     kmain(...) called by the boot.asm file and linked to it by the linker.ld file.
-    
+
     panic(...) is used across the kernel for errors that require a restart.
-    
+
     halt() uses an infinite while-loop to halt in C. It's not a true cpu halt but it's mainly just for isolating parts of the kernel for debugging
 
 
@@ -47,6 +47,7 @@ kernel.c:
 #include "../drivers/vga/vgahandler.h"
 #include "../mem/paging.h"
 #include "../lib/logging.h"
+#include "../init/init.h"
 #include "../multiboot/multiboot.h"
 #include "../drivers/vga/framebuffer.h"
 #include <stdint.h>
@@ -197,12 +198,24 @@ void mem_dump(uint32_t address, uint32_t length) {
 }
 
 void draw_floppaos_logo() {
-    const char* ascii_art = "  __ _                          ___  ____   \n"
-                            " / _| | ___  _ __  _ __   __ _ / _ \\/ ___|  \n"
-                            "| |_| |/ _ \\| '_ \\| '_ \\ / _` | | | \\___ \\  \n"
-                            "|  _| | (_) | |_) | |_) | (_| | |_| |___) | \n"
-                            "|_| |_|\\___/| .__/| .__/ \\__,_|\\___/|____/ v0.1.1-alpha \n"
-                            "            |_|   |_|                      \n";
+    const char* ascii_art = " _____                                                         _____ \n"
+                            "( ___ )-------------------------------------------------------( ___ )\n"
+                            " |   |                                                         |   | \n"
+                            " |   |  ________                                               |   | \n"
+                            " |   | /_  __/ / ___                                           |   | \n"
+                            " |   |  / / / _ / -_)                                          |   | \n"
+                            " |   | /_/_/_//_\\__/                       __  _               |   | \n"
+                            " |   |   / __/ ___  ___  ___ ___ _______ _/ /_(____ ___ _      |   | \n"
+                            " |   |  / _// / _ \\/ _ \\/ _ / -_/ __/ _ `/ __/ / _ / _ `/      |   | \n"
+                            " |   | /_/ /_/\\___/ .__/ .__\\__/_/  \\_,_/\\__/_/_//_\\_, /       |   | \n"
+                            " |   |    ____   /_/  /_/                         /___/        |   | \n"
+                            " |   |   / ____ _____/ /____ __ _                              |   | \n"
+                            " |   |  _\\ \\/ // (_-/ __/ -_/  ' \\                             |   | \n"
+                            " |   | /___/\\_, /___\\__/\\__/_/_/_/                             |   | \n"
+                            " |   |     /___/                                               |   | \n"
+                            " |___|                                                         |___| \n"
+                            "(_____)-------------------------------------------------------(_____)\n";
+
     echo(ascii_art, YELLOW);
     sleep_seconds(1);
 }
@@ -246,22 +259,7 @@ int kmain(uint32_t magic, multiboot_info_t* mb_info) {
     log("Kernel version: " VERSION "\n", YELLOW);
     log("Starting floppaOS kernel...\n", YELLOW);
 
-    gdt_init();
-    sleep_seconds(1);
-    interrupts_init(); // idt, irq's, and isr's are set up here
-    pmm_init(mb_info); // dependency for paging, vmm, and heap.
-
-    paging_init(); // dependency vmm.
-
-    vmm_init();
-
-    heap_init();
-    kmalloc_memtest();
-    sleep_seconds(1);
-
-    vfs_init();
-    sched_init();
-    proc_init();
+    init(mb_info);
     echo("floppaOS kernel booted! now we do nothing.\n", GREEN);
 
     draw_floppaos_logo();

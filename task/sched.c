@@ -36,14 +36,22 @@ static void idle_thread_loop() {
     }
 }
 
+static void stealer_thread_entry() {}
+
 static thread_t*
 sched_internal_init_thread(void (*entry)(void), unsigned int priority, char* name, int user, process_t* process);
 
-static void stealer_thread_entry() {}
-
 extern void context_switch(cpu_ctx_t* old, cpu_ctx_t* new);
 extern void usermode_entry_routine(uint32_t stack, uint32_t ip);
-scheduler_t sched;
+scheduler_t sched = {
+    .kernel_threads = {.head = NULL, .tail = NULL, .count = 0, .name = "kernel_threads", .lock = SPINLOCK_INIT},
+    .user_threads = {.head = NULL, .tail = NULL, .count = 0, .name = "user_threads", .lock = SPINLOCK_INIT},
+    .ready_queue = {.head = NULL, .tail = NULL, .count = 0, .name = "ready_queue", .lock = SPINLOCK_INIT},
+    .sleep_queue = {.head = NULL, .tail = NULL, .count = 0, .name = "sleep_queue", .lock = SPINLOCK_INIT},
+    .next_tid = 1,
+    .idle_thread = NULL,
+    .stealer_thread = NULL,
+};
 #define USER_STACK_TOP 0xC0000000
 #define USER_STACK_SIZE 0x1000
 
@@ -75,63 +83,12 @@ static inline uint32_t sched_internal_fetch_next_stack_index(process_t* process)
     return process->threads ? process->threads->count : 0;
 }
 
-int sched_spinlocks_init(void) {
-    static spinlock_t ready_queue_spinlock_initializer = SPINLOCK_INIT;
-    static spinlock_t sleep_queue_spinlock_initializer = SPINLOCK_INIT;
-    static spinlock_t kernel_threads_spinlock_initializer = SPINLOCK_INIT;
-    static spinlock_t user_threads_spinlock_initializer = SPINLOCK_INIT;
-    spinlock_init(&sched.ready_queue->lock);
-    spinlock_init(&sched.sleep_queue->lock);
-    spinlock_init(&sched.kernel_threads->lock);
-    spinlock_init(&sched.user_threads->lock);
-    return 0;
-}
-
-int sched_scheduler_lists_init(void) {
-    sched.ready_queue = (thread_list_t*) kmalloc(sizeof(thread_list_t));
-    sched.sleep_queue = (thread_list_t*) kmalloc(sizeof(thread_list_t));
-    sched.kernel_threads = (thread_list_t*) kmalloc(sizeof(thread_list_t));
-    sched.user_threads = (thread_list_t*) kmalloc(sizeof(thread_list_t));
-
-    if (sched_spinlocks_init() < 0) {
-        sched.ready_queue = NULL;
-        sched.sleep_queue = NULL;
-        sched.kernel_threads = NULL;
-        sched.user_threads = NULL;
-        return -1;
-    }
-
-    return 0;
-}
-
-int sched_assign_list_names(void) {
-    sched.ready_queue->name = "ready_queue";
-    sched.sleep_queue->name = "sleep_queue";
-    sched.kernel_threads->name = "kernel_threads";
-    sched.user_threads->name = "user_threads";
-    return 0;
-}
-
 int sched_init_kernel_worker_pool(void);
 
-// set up thread lists
-// init list spinlocks
-// and create reaper and idle threads
 void sched_init(void) {
-    if (sched_scheduler_lists_init() < 0) {
-        log("sched: failed to init scheduler lists\n", RED);
-        return;
-    }
-
-    if (sched_assign_list_names() < 0) {
-        log("sched: failed to init scheduler list names\n", RED);
-        return;
-    }
-
-    sched.stealer_thread = NULL;
-    sched.next_tid = 0;
-
-    sched_thread_list_add(sched.idle_thread, sched.ready_queue);
+    sched.idle_thread = sched_internal_init_thread(idle_thread_loop, 0, "idle", 0, NULL);
+    sched.stealer_thread = sched_internal_init_thread(stealer_thread_entry, 0, "reaper", 0, NULL);
+    sched_thread_list_add(sched.idle_thread, &sched.ready_queue);
 
     log("sched: init - ok\n", GREEN);
 }
@@ -353,7 +310,7 @@ thread_t* sched_create_user_thread(void (*entry)(void), unsigned priority, char*
     sched_internal_setup_thread_stack(new_thread, entry, user_stack_top);
 
     sched_thread_list_add(new_thread, process->threads);
-    sched_thread_list_add(new_thread, sched.user_threads);
+    sched_thread_list_add(new_thread, &sched.user_threads);
 
     log("sched: user thread created\n", GREEN);
     return new_thread;
@@ -386,7 +343,7 @@ void sched_thread_list_add(thread_t* thread, thread_list_t* list) {
 thread_t* sched_create_kernel_thread(void (*entry)(void), unsigned priority, char* name) {
     thread_t* new_thread = sched_internal_init_thread((void*) entry, priority, name, 0, NULL);
     log("sched: kernel thread created", GREEN);
-    sched_thread_list_add(new_thread, sched.kernel_threads);
+    sched_thread_list_add(new_thread, &sched.kernel_threads);
     return new_thread;
 }
 
@@ -433,8 +390,9 @@ void sched_find_best_thread_iterate(thread_list_t* list,
 }
 
 static thread_t* sched_find_best_thread(thread_list_t* list, thread_t** out_prev) {
-    if (!list || !list->head)
+    if (!list || !list->head) {
         return NULL;
+    }
 
     thread_t* best = NULL;
     thread_t* best_prev = NULL;
@@ -449,8 +407,9 @@ static thread_t* sched_find_best_thread(thread_list_t* list, thread_t** out_prev
 }
 
 static void sched_unlink_thread(thread_list_t* list, thread_t* thread, thread_t* prev) {
-    if (!list || !thread)
+    if (!list || !thread) {
         return;
+    }
 
     if (prev) {
         prev->next = thread->next;
@@ -462,8 +421,9 @@ static void sched_unlink_thread(thread_list_t* list, thread_t* thread, thread_t*
         list->tail = prev;
     }
 
-    if (list->count > 0)
+    if (list->count > 0) {
         list->count--;
+    }
 
     thread->next = NULL;
 }
@@ -489,11 +449,11 @@ static thread_t* sched_select_by_time_slice(thread_list_t* list) {
 }
 
 static thread_t* sched_select_next(void) {
-    sched_boost_starved_threads(sched.ready_queue);
+    sched_boost_starved_threads(&sched.ready_queue);
 
-    spinlock(&sched.ready_queue->lock);
-    thread_t* next = sched_select_by_time_slice(sched.ready_queue);
-    spinlock_unlock(&sched.ready_queue->lock, true);
+    spinlock(&sched.ready_queue.lock);
+    thread_t* next = sched_select_by_time_slice(&sched.ready_queue);
+    spinlock_unlock(&sched.ready_queue.lock, true);
 
     return next;
 }
@@ -551,7 +511,7 @@ void sched_yield(void) {
     }
 
     if (current_thread != sched.idle_thread) {
-        sched_enqueue(sched.ready_queue, current_thread);
+        sched_enqueue(&sched.ready_queue, current_thread);
     }
 
     sched_schedule();
@@ -574,7 +534,7 @@ void sched_unblock(thread_t* thread) {
     }
 
     thread->thread_state = THREAD_READY;
-    sched_enqueue(sched.ready_queue, thread);
+    sched_enqueue(&sched.ready_queue, thread);
 }
 
 void sched_thread_sleep(uint32_t ms) {
@@ -586,7 +546,7 @@ void sched_thread_sleep(uint32_t ms) {
     current->wake_time = sched_ticks_counter + (uint64_t) ms;
     current->thread_state = THREAD_SLEEPING;
 
-    sched_enqueue(sched.sleep_queue, current);
+    sched_enqueue(&sched.sleep_queue, current);
     sched_yield();
 }
 
@@ -614,7 +574,7 @@ static void sched_remove_from_sleep_queue(thread_list_t* sleep_queue, thread_t* 
 
 static void sched_wake_thread(thread_t* t) {
     t->thread_state = THREAD_READY;
-    sched_enqueue(sched.ready_queue, t);
+    sched_enqueue(&sched.ready_queue, t);
 }
 
 static thread_t* sched_process_sleep_thread(thread_list_t* sleep_queue, thread_t* t, thread_t* prev) {
@@ -632,17 +592,17 @@ static thread_t* sched_process_sleep_thread(thread_list_t* sleep_queue, thread_t
 void sched_tick(void) {
     sched_ticks_counter++;
 
-    spinlock(&sched.sleep_queue->lock);
+    spinlock(&sched.sleep_queue.lock);
 
     thread_t* prev = NULL;
-    thread_t* curr = sched.sleep_queue->head;
+    thread_t* curr = sched.sleep_queue.head;
 
     while (curr) {
-        prev = sched_process_sleep_thread(sched.sleep_queue, curr, prev);
-        curr = (prev) ? prev->next : sched.sleep_queue->head;
+        prev = sched_process_sleep_thread(&sched.sleep_queue, curr, prev);
+        curr = (prev) ? prev->next : sched.sleep_queue.head;
     }
 
-    spinlock_unlock(&sched.sleep_queue->lock, true);
+    spinlock_unlock(&sched.sleep_queue.lock, true);
 }
 
 typedef struct worker_thread {
@@ -686,7 +646,7 @@ static worker_thread* sched_create_worker_thread(void (*entry)(void*), void* arg
     if (!worker) {
         return NULL;
     }
-    sched_thread_list_add(worker->thread, sched.kernel_threads);
+    sched_thread_list_add(worker->thread, &sched.kernel_threads);
     return worker;
 }
 
@@ -725,7 +685,7 @@ worker_thread* sched_create_subsystem_worker(
         return NULL;
     }
 
-    sched_thread_list_add(worker->thread, sched.kernel_threads);
+    sched_thread_list_add(worker->thread, &sched.kernel_threads);
     return worker;
 }
 
@@ -747,7 +707,7 @@ int sched_create_worker_pool(worker_pool_descriptor_t* desc, size_t count) {
             break;
         }
 
-        sched_enqueue(sched.ready_queue, worker->thread);
+        sched_enqueue(&sched.ready_queue, worker->thread);
         pool[created++] = worker;
     }
 
@@ -757,7 +717,7 @@ int sched_create_worker_pool(worker_pool_descriptor_t* desc, size_t count) {
             if (!cw) {
                 continue;
             }
-            sched_remove(sched.kernel_threads, cw->thread);
+            sched_remove(&sched.kernel_threads, cw->thread);
             if (cw->thread->kernel_stack) {
                 kfree(cw->thread->kernel_stack, 4096);
             }
@@ -798,7 +758,7 @@ int sched_expand_worker_pool(worker_pool_descriptor_t* desc, size_t target_count
         if (!worker) {
             break;
         }
-        sched_enqueue(sched.ready_queue, worker->thread);
+        sched_enqueue(&sched.ready_queue, worker->thread);
         new_pool[i] = worker;
         created++;
     }
@@ -840,7 +800,7 @@ int sched_start_worker_pool_manager(worker_pool_descriptor_t* desc) {
         return -1;
     }
 
-    sched_enqueue(sched.ready_queue, mgr->thread);
+    sched_enqueue(&sched.ready_queue, mgr->thread);
     return 0;
 }
 
@@ -854,7 +814,7 @@ int sched_remove_worker_pool(worker_pool_descriptor_t* desc) {
         if (!worker) {
             continue;
         }
-        sched_remove(sched.kernel_threads, worker->thread);
+        sched_remove(&sched.kernel_threads, worker->thread);
         if (worker->thread->kernel_stack) {
             kfree(worker->thread->kernel_stack, 4096);
         }
@@ -891,7 +851,7 @@ int sched_copy_worker_pool(worker_pool_descriptor_t* dest, const worker_pool_des
             break;
         }
 
-        sched_thread_list_add(dw->thread, sched.kernel_threads);
+        sched_thread_list_add(dw->thread, &sched.kernel_threads);
         new_pool[i] = dw;
         copied++;
     }
@@ -902,7 +862,7 @@ int sched_copy_worker_pool(worker_pool_descriptor_t* dest, const worker_pool_des
             if (!worker) {
                 continue;
             }
-            sched_remove(sched.kernel_threads, worker->thread);
+            sched_remove(&sched.kernel_threads, worker->thread);
             if (worker->thread->kernel_stack) {
                 kfree(worker->thread->kernel_stack, 4096);
             }
@@ -959,7 +919,7 @@ int sched_copy_selected_workers(worker_pool_descriptor_t* dest,
             break;
         }
 
-        sched_thread_list_add(dw->thread, sched.kernel_threads);
+        sched_thread_list_add(dw->thread, &sched.kernel_threads);
         new_pool[i] = dw;
         copied++;
     }
@@ -970,7 +930,7 @@ int sched_copy_selected_workers(worker_pool_descriptor_t* dest,
             if (!worker) {
                 continue;
             }
-            sched_remove(sched.kernel_threads, worker->thread);
+            sched_remove(&sched.kernel_threads, worker->thread);
             if (worker->thread->kernel_stack) {
                 kfree(worker->thread->kernel_stack, 4096);
             }
@@ -1013,7 +973,7 @@ int sched_delete_specified_workers_from_pool(worker_pool_descriptor_t* desc,
             continue;
         }
 
-        sched_remove(sched.kernel_threads, worker->thread);
+        sched_remove(&sched.kernel_threads, worker->thread);
         if (worker->thread->kernel_stack) {
             kfree(worker->thread->kernel_stack, 4096);
         }
@@ -1047,7 +1007,7 @@ int sched_add_workers_to_pool(worker_pool_descriptor_t* desc, worker_thread** ne
             new_pool[desc->count + i] = NULL;
             continue;
         }
-        sched_thread_list_add(worker->thread, sched.kernel_threads);
+        sched_thread_list_add(worker->thread, &sched.kernel_threads);
         new_pool[desc->count + i] = worker;
     }
 
@@ -1061,127 +1021,144 @@ int sched_add_workers_to_pool(worker_pool_descriptor_t* desc, worker_thread** ne
 }
 
 static worker_thread* sched_get_worker(worker_pool_descriptor_t* desc, size_t index) {
-    if (!desc || !desc->pool || index >= desc->count)
+    if (!desc || !desc->pool || index >= desc->count) {
         return NULL;
+    }
     return desc->pool[index];
 }
 
 static size_t sched_count_active_workers(worker_pool_descriptor_t* desc) {
-    if (!desc || !desc->pool)
+    if (!desc || !desc->pool) {
         return 0;
+    }
 
     size_t count = 0;
     for (size_t i = 0; i < desc->count; i++) {
-        if (desc->pool[i])
+        if (desc->pool[i]) {
             count++;
+        }
     }
     return count;
 }
 
 static int sched_replace_worker(worker_pool_descriptor_t* desc, size_t index, worker_thread* new_worker) {
-    if (!desc || !desc->pool || index >= desc->count || !new_worker)
+    if (!desc || !desc->pool || index >= desc->count || !new_worker) {
         return -1;
+    }
 
     worker_thread* old = desc->pool[index];
     if (old) {
-        sched_remove(sched.kernel_threads, old->thread);
-        if (old->thread->kernel_stack)
+        sched_remove(&sched.kernel_threads, old->thread);
+        if (old->thread->kernel_stack) {
             kfree(old->thread->kernel_stack, 4096);
+        }
         kfree(old->thread, sizeof(thread_t));
         kfree(old, sizeof(worker_thread));
     }
 
     desc->pool[index] = new_worker;
-    sched_thread_list_add(new_worker->thread, sched.kernel_threads);
-    sched_enqueue(sched.ready_queue, new_worker->thread);
+    sched_thread_list_add(new_worker->thread, &sched.kernel_threads);
+    sched_enqueue(&sched.ready_queue, new_worker->thread);
     return 0;
 }
 
 static int sched_suspend_worker(worker_thread* worker) {
-    if (!worker || !worker->thread)
+    if (!worker || !worker->thread) {
         return -1;
+    }
 
     worker->thread->thread_state = THREAD_SUSPENDED;
-    sched_remove(sched.ready_queue, worker->thread);
+    sched_remove(&sched.ready_queue, worker->thread);
     return 0;
 }
 
 static int sched_resume_worker(worker_thread* worker) {
-    if (!worker || !worker->thread)
+    if (!worker || !worker->thread) {
         return -1;
+    }
 
     worker->thread->thread_state = THREAD_READY;
-    sched_enqueue(sched.ready_queue, worker->thread);
+    sched_enqueue(&sched.ready_queue, worker->thread);
     return 0;
 }
 
 static int sched_broadcast_to_pool(worker_pool_descriptor_t* desc, void (*fn)(worker_thread*, void*), void* arg) {
-    if (!desc || !fn)
+    if (!desc || !fn) {
         return -1;
+    }
 
     for (size_t i = 0; i < desc->count; i++) {
         worker_thread* worker = desc->pool[i];
-        if (worker)
+        if (worker) {
             fn(worker, arg);
+        }
     }
     return 0;
 }
 
 static worker_thread* sched_find_idle_worker(worker_pool_descriptor_t* desc) {
-    if (!desc || !desc->pool)
+    if (!desc || !desc->pool) {
         return NULL;
+    }
 
     for (size_t i = 0; i < desc->count; i++) {
         worker_thread* worker = desc->pool[i];
-        if (worker && worker->thread->thread_state == THREAD_READY)
+        if (worker && worker->thread->thread_state == THREAD_READY) {
             return worker;
+        }
     }
     return NULL;
 }
 
 static int sched_set_worker_priority(worker_thread* worker, unsigned priority) {
-    if (!worker || !worker->thread)
+    if (!worker || !worker->thread) {
         return -1;
+    }
 
     worker->thread->priority.base = priority ? priority : 1;
     return 0;
 }
 
 static int sched_for_each_worker(worker_pool_descriptor_t* desc, int (*fn)(worker_thread*, void*), void* arg) {
-    if (!desc || !fn)
+    if (!desc || !fn) {
         return -1;
+    }
 
     int ret = 0;
     for (size_t i = 0; i < desc->count; i++) {
         worker_thread* worker = desc->pool[i];
         if (worker) {
             int r = fn(worker, arg);
-            if (r != 0)
+            if (r != 0) {
                 ret = r;
+            }
         }
     }
     return ret;
 }
 
 static int sched_dispatch_task_to_worker(worker_pool_descriptor_t* pool, void (*task)(void*), void* arg) {
-    if (!pool || !task)
+    if (!pool || !task) {
         return -1;
+    }
 
     for (size_t i = 0; i < pool->count; i++) {
         worker_thread* worker = pool->pool[i];
-        if (!worker)
+        if (!worker) {
             continue;
+        }
 
         thread_t* t = worker->thread;
-        if (!t)
+        if (!t) {
             continue;
+        }
 
         if (t->thread_state == THREAD_READY) {
             worker->entry = task;
             worker->arg = arg;
 
             t->thread_state = THREAD_READY;
-            sched_enqueue(sched.ready_queue, t);
+            sched_enqueue(&sched.ready_queue, t);
             return 0;
         }
     }
@@ -1191,22 +1168,22 @@ static int sched_dispatch_task_to_worker(worker_pool_descriptor_t* pool, void (*
 
 void sched_worker_thread_print(void) {
     log("Kernel Worker Threads:\n", YELLOW);
-    spinlock(&sched.kernel_threads->lock);
-    for (thread_t* t = sched.kernel_threads->head; t; t = t->next) {
+    spinlock(&sched.kernel_threads.lock);
+    for (thread_t* t = sched.kernel_threads.head; t; t = t->next) {
         char buffer[128];
         flopsnprintf(buffer, sizeof(buffer), " - %s (priority: %u)\n", t->name, t->priority.base);
         log(buffer, YELLOW);
     }
-    spinlock_unlock(&sched.kernel_threads->lock, true);
+    spinlock_unlock(&sched.kernel_threads.lock, true);
 
     log("User Threads:\n", YELLOW);
-    spinlock(&sched.user_threads->lock);
-    for (thread_t* t = sched.user_threads->head; t; t = t->next) {
+    spinlock(&sched.user_threads.lock);
+    for (thread_t* t = sched.user_threads.head; t; t = t->next) {
         char buffer[128];
         flopsnprintf(buffer, sizeof(buffer), " - %s (priority: %u)\n", t->name, t->priority.base);
         log(buffer, YELLOW);
     }
-    spinlock_unlock(&sched.user_threads->lock, true);
+    spinlock_unlock(&sched.user_threads.lock, true);
 }
 
 void sched_worker_thread_count_print(void) {
@@ -1214,8 +1191,8 @@ void sched_worker_thread_count_print(void) {
     flopsnprintf(buffer,
                  sizeof(buffer),
                  "Kernel Worker Threads: %u\nUser Threads: %u\n",
-                 sched.kernel_threads->count,
-                 sched.user_threads->count);
+                 sched.kernel_threads.count,
+                 sched.user_threads.count);
     log(buffer, YELLOW);
 }
 

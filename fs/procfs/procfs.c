@@ -74,8 +74,9 @@ static int procfs_close(struct vfs_node* node) {
 }
 
 static int procfs_read(struct vfs_node* node, unsigned char* buf, unsigned long size) {
-    if (!node || !buf || size == 0)
+    if (!node || !buf || size == 0) {
         return 0;
+    }
 
     size_t len = flopstrlen(node->name);
     if (len > size) {

@@ -44,8 +44,6 @@ void flush_gdt() {
 }
 
 void gdt_init() {
-    log("gdt init - start\n", GREEN);
-
     flush_gdt();
     tss_init(3, 0x10, 0x0);
 

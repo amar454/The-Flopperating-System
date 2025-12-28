@@ -116,8 +116,9 @@ static int vfs_mp_dev_alloc(struct vfs_mountpoint* mp, char* device) {
 
 static struct vfs_mountpoint* vfs_create_mountpoint(char* device, char* mount_point, int type) {
     struct vfs_mountpoint* mp = vfs_mp_struc_alloc();
-    if (!mp)
+    if (!mp) {
         return NULL;
+    }
 
     if (vfs_assign_mp_fs(mp, type) != 0) {
         kfree(mp, sizeof(struct vfs_mountpoint));
@@ -156,10 +157,12 @@ static void vfs_free_mountpoint(struct vfs_mountpoint* mp) {
         log("vfs_free_mountpoint: mp is NULL\n", RED);
         return;
     }
-    if (mp->mount_point)
+    if (mp->mount_point) {
         kfree(mp->mount_point, flopstrlen(mp->mount_point) + 1);
-    if (mp->device_name)
+    }
+    if (mp->device_name) {
         kfree(mp->device_name, flopstrlen(mp->device_name) + 1);
+    }
     kfree(mp, sizeof(struct vfs_mountpoint));
 }
 
@@ -368,19 +371,22 @@ void vfs_directory_list_free(struct vfs_directory_list* list) {
 }
 
 static int vfs_internal_stat(struct vfs_node* node, stat_t* st) {
-    if (!node || !st)
+    if (!node || !st) {
         return -1;
+    }
 
-    if (node->mountpoint->filesystem->op_table.stat)
+    if (node->mountpoint->filesystem->op_table.stat) {
         return node->mountpoint->filesystem->op_table.stat(node->name, st);
+    }
 
     *st = node->stat;
     return 0;
 }
 
 int vfs_fstat(struct vfs_node* node, stat_t* st) {
-    if (!node || !st)
+    if (!node || !st) {
         return -1;
+    }
 
     return vfs_internal_stat(node, st);
 }
@@ -542,8 +548,9 @@ struct vfs_node* vfs_open(char* name, int mode) {
         return NULL;
     }
 
-    if (vfs_node_alloc(&n, mp, mode) != 0)
+    if (vfs_node_alloc(&n, mp, mode) != 0) {
         return NULL;
+    }
 
     if (vfs_try_open(n, mp, relative_path) == 0) {
         vfs_seek_if_append(n);
@@ -697,8 +704,9 @@ int vfs_rmdir(char* path) {
         return -1;
     }
     if (mp->filesystem->op_table.rmdir == NULL) {
-        if (refcount_dec_and_test(&mp->refcount))
+        if (refcount_dec_and_test(&mp->refcount)) {
             vfs_free_mountpoint(mp);
+        }
         return -1;
     }
     int r = mp->filesystem->op_table.rmdir(mp, rel);

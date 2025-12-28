@@ -76,6 +76,7 @@ typedef struct thread {
 
     thread_t* priority_inheritance_owner;
     thread_t* ts_next;
+    void* blocked_lock;
 
     // priority is the base priority assigned when the thread is created
     // if the thread is starved a priority boost will be added to the effective priority
@@ -107,14 +108,12 @@ typedef struct thread {
 } thread_t;
 
 typedef struct scheduler {
-    thread_list_t* ready_queue;
-    thread_list_t* sleep_queue;
-    thread_list_t* kernel_threads;
-    thread_list_t* user_threads;
-    spinlock_t ready_queue_lock;
+    thread_list_t ready_queue;
+    thread_list_t sleep_queue;
+    thread_list_t kernel_threads;
+    thread_list_t user_threads;
     uint32_t next_tid;
     thread_t* idle_thread;
-    thread_t* reaper_thread;
     thread_t* stealer_thread;
 } scheduler_t;
 

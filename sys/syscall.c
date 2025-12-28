@@ -94,8 +94,9 @@ int sys_open(struct syscall_args* args) {
         return -1;
     }
 
-    if (!path)
+    if (!path) {
         return -1;
+    }
 
     process_t* proc = proc_get_current();
 
@@ -324,6 +325,8 @@ int sys_write(struct syscall_args* args) {
     }
 
     if (fd == 1) {
+        // fd 1 is just stdout
+        // use kernel printing backend
         echo(buf, WHITE);
         return 0;
     }
@@ -426,8 +429,9 @@ static int sys_mmap_internal_alloc(
 
 // get the virtual address for mmap
 static int sys_mmap_internal_get_va(vmm_region_t* region, uint32_t requested_va, uint32_t length, uint32_t* out_va) {
-    if (!region || !out_va)
+    if (!region || !out_va) {
         return -1;
+    }
 
     // look for a free virtual range
     if (requested_va == 0) {
@@ -441,8 +445,9 @@ static int sys_mmap_internal_get_va(vmm_region_t* region, uint32_t requested_va,
         return 0;
     }
 
-    if (requested_va & (PAGE_SIZE - 1))
+    if (requested_va & (PAGE_SIZE - 1)) {
         return -1;
+    }
 
     *out_va = requested_va;
     return 0;
@@ -541,8 +546,9 @@ int sys_mremap(struct syscall_args* args) {
         return -1;
     }
 
-    if (old_len == 0 || new_len == 0)
+    if (old_len == 0 || new_len == 0) {
         return -1;
+    }
 
     // page align new and old lengths
     old_len = ALIGN_UP(old_len, PAGE_SIZE);
@@ -550,8 +556,9 @@ int sys_mremap(struct syscall_args* args) {
 
     // fetch current process and vm region
     process_t* proc = proc_get_current();
-    if (!proc || !proc->region)
+    if (!proc || !proc->region) {
         return -1;
+    }
 
     vmm_region_t* region = proc->region;
 
@@ -579,8 +586,9 @@ int sys_mremap(struct syscall_args* args) {
             }
             // zero out the page
             uint8_t* bp = (uint8_t*) phys_page;
-            for (size_t i = 0; i < PAGE_SIZE; i++)
+            for (size_t i = 0; i < PAGE_SIZE; i++) {
                 bp[i] = 0;
+            }
             // map the page
             vmm_map(region, va, (uintptr_t) phys_page, flags);
         }
@@ -591,14 +599,17 @@ int sys_mremap(struct syscall_args* args) {
 
 // validate a memory mapping for munmap
 static int sys_munmap_internal_validate(vmm_region_t* region, uintptr_t addr, uint32_t len) {
-    if (!region)
+    if (!region) {
         return -1;
+    }
 
-    if (len == 0)
+    if (len == 0) {
         return -1;
+    }
 
-    if (addr & (PAGE_SIZE - 1))
+    if (addr & (PAGE_SIZE - 1)) {
         return -1;
+    }
 
     len = ALIGN_UP(len, PAGE_SIZE);
 
@@ -634,13 +645,15 @@ static int sys_munmap_internal_unmap_range(vmm_region_t* region, uintptr_t addr,
 
 // fetch region, validate and unmap range for munmap
 static int sys_munmap_internal(process_t* proc, uintptr_t addr, uint32_t len) {
-    if (!proc || !proc->region)
+    if (!proc || !proc->region) {
         return -1;
+    }
 
     vmm_region_t* region = proc->region;
 
-    if (sys_munmap_internal_validate(region, addr, len) < 0)
+    if (sys_munmap_internal_validate(region, addr, len) < 0) {
         return -1;
+    }
 
     len = ALIGN_UP(len, PAGE_SIZE);
 
@@ -801,12 +814,14 @@ int sys_ftruncate(struct syscall_args* args) {
     }
 
     process_t* proc = proc_get_current();
-    if (fd < 0 || fd >= MAX_PROC_FDS)
+    if (fd < 0 || fd >= MAX_PROC_FDS) {
         return -1;
+    }
 
     struct vfs_file_descriptor* desc = &proc->fds[fd];
-    if (!desc || !desc->node)
+    if (!desc || !desc->node) {
         return -1;
+    }
 
     return vfs_ftruncate(desc->node, length);
 }

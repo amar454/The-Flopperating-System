@@ -62,6 +62,17 @@ typedef enum syscall_num {
     SYSCALL_MREMAP = 41
 } syscall_num_t;
 
+typedef struct int_frame {
+    uint32_t gs, fs, es, ds;
+
+    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax;
+
+    uint32_t int_no;
+    uint32_t err_code;
+
+    uint32_t eip, cs, eflags, useresp, ss;
+} int_frame_t;
+
 typedef struct syscall_table {
     int (*sys_read)(struct syscall_args* args);
     int (*sys_write)(struct syscall_args* args);

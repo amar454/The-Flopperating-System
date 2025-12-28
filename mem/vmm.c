@@ -371,6 +371,7 @@ uint32_t vmm_get_pde(vmm_region_t* region, uintptr_t va) {
     return region->pg_dir[pd_index(va)];
 }
 
+// find a virtual address range that is free in the given region
 uintptr_t vmm_find_free_range(vmm_region_t* region, size_t pages) {
     size_t run = 0;
     uintptr_t start = 0;
@@ -401,10 +402,12 @@ uintptr_t vmm_find_free_range(vmm_region_t* region, size_t pages) {
 int vmm_map_shared(
     vmm_region_t* a, vmm_region_t* b, uintptr_t va_a, uintptr_t va_b, uintptr_t pa, size_t pages, uint32_t flags) {
     for (size_t i = 0; i < pages; i++) {
-        if (vmm_map(a, va_a + i * PAGE_SIZE, pa + i * PAGE_SIZE, flags) < 0)
+        if (vmm_map(a, va_a + i * PAGE_SIZE, pa + i * PAGE_SIZE, flags) < 0) {
             return -1;
-        if (vmm_map(b, va_b + i * PAGE_SIZE, pa + i * PAGE_SIZE, flags) < 0)
+        }
+        if (vmm_map(b, va_b + i * PAGE_SIZE, pa + i * PAGE_SIZE, flags) < 0) {
             return -1;
+        }
     }
     return 0;
 }
@@ -419,9 +422,11 @@ int vmm_is_mapped(vmm_region_t* region, uintptr_t va) {
 
 size_t vmm_count_mapped(vmm_region_t* region) {
     size_t n = 0;
-    for (uintptr_t va = 0; va < KERNEL_VIRT_BASE; va += PAGE_SIZE)
-        if (vmm_is_mapped(region, va))
+    for (uintptr_t va = 0; va < KERNEL_VIRT_BASE; va += PAGE_SIZE) {
+        if (vmm_is_mapped(region, va)) {
             n++;
+        }
+    }
     return n;
 }
 
@@ -457,12 +462,14 @@ static uint32_t rand32(void) {
 
 static int aslr_table_grow(vmm_region_t* region, size_t want) {
     size_t newcap = region->random_capacity ? region->random_capacity * 2 : 8;
-    while (newcap < want)
+    while (newcap < want) {
         newcap *= 2;
+    }
 
     aslr_entry_t* newtab = (aslr_entry_t*) kmalloc(newcap * sizeof(aslr_entry_t));
-    if (!newtab)
+    if (!newtab) {
         return -1;
+    }
 
     if (region->random_table) {
         flop_memcpy(newtab, region->random_table, region->random_count * sizeof(aslr_entry_t));
@@ -474,15 +481,18 @@ static int aslr_table_grow(vmm_region_t* region, size_t want) {
 }
 
 uintptr_t vmm_aslr_alloc(vmm_region_t* region, size_t pages, size_t align, uint32_t flags) {
-    if (!region || pages == 0)
+    if (!region || pages == 0) {
         return 0;
+    }
 
-    if (align == 0)
+    if (align == 0) {
         align = 1;
+    }
     if ((align & (align - 1)) != 0) {
         size_t a = 1;
-        while (a < align)
+        while (a < align) {
             a <<= 1;
+        }
         align = a;
     }
     size_t align_bytes = align * PAGE_SIZE;
@@ -495,10 +505,12 @@ uintptr_t vmm_aslr_alloc(vmm_region_t* region, size_t pages, size_t align, uint3
         uintptr_t candidate_offset = ((uint64_t) r * (uint64_t) span) >> 32;
         uintptr_t candidate = (USER_SPACE_START + candidate_offset) & ~(align_bytes - 1);
 
-        if (candidate < USER_SPACE_START)
+        if (candidate < USER_SPACE_START) {
             candidate = USER_SPACE_START;
-        if (candidate + pages * PAGE_SIZE - 1 > USER_SPACE_END)
+        }
+        if (candidate + pages * PAGE_SIZE - 1 > USER_SPACE_END) {
             continue;
+        }
 
         int ok = 1;
         for (size_t i = 0; i < pages; i++) {
@@ -507,12 +519,14 @@ uintptr_t vmm_aslr_alloc(vmm_region_t* region, size_t pages, size_t align, uint3
                 break;
             }
         }
-        if (!ok)
+        if (!ok) {
             continue;
+        }
 
         if (region->random_count + 1 > region->random_capacity) {
-            if (aslr_table_grow(region, region->random_count + 1) != 0)
+            if (aslr_table_grow(region, region->random_count + 1) != 0) {
                 return 0;
+            }
         }
         aslr_entry_t* e = &region->random_table[region->random_count++];
         e->va = candidate;
@@ -523,12 +537,14 @@ uintptr_t vmm_aslr_alloc(vmm_region_t* region, size_t pages, size_t align, uint3
     }
 
     uintptr_t found = vmm_find_free_range(region, pages);
-    if (!found)
+    if (!found) {
         return 0;
+    }
 
     if (region->random_count + 1 > region->random_capacity) {
-        if (aslr_table_grow(region, region->random_count + 1) != 0)
+        if (aslr_table_grow(region, region->random_count + 1) != 0) {
             return 0;
+        }
     }
     aslr_entry_t* e = &region->random_table[region->random_count++];
     e->va = found;
@@ -539,8 +555,9 @@ uintptr_t vmm_aslr_alloc(vmm_region_t* region, size_t pages, size_t align, uint3
 }
 
 void vmm_aslr_free(vmm_region_t* region, uintptr_t va) {
-    if (!region)
+    if (!region) {
         return;
+    }
     size_t idx = (size_t) -1;
     for (size_t i = 0; i < region->random_count; ++i) {
         if (region->random_table[i].va == va) {
@@ -548,8 +565,9 @@ void vmm_aslr_free(vmm_region_t* region, uintptr_t va) {
             break;
         }
     }
-    if (idx == (size_t) -1)
+    if (idx == (size_t) -1) {
         return;
+    }
 
     aslr_entry_t entry = region->random_table[idx];
 
@@ -565,27 +583,31 @@ void vmm_aslr_free(vmm_region_t* region, uintptr_t va) {
 
 int vmm_map_direct(vmm_region_t* region, uintptr_t phys, size_t pages, uint32_t flags) {
     for (size_t i = 0; i < pages; i++) {
-        if (vmm_map(region, phys + i * PAGE_SIZE, phys + i * PAGE_SIZE, flags) < 0)
+        if (vmm_map(region, phys + i * PAGE_SIZE, phys + i * PAGE_SIZE, flags) < 0) {
             return -1;
+        }
     }
     return 0;
 }
 
 uintptr_t vmm_map_anonymous(vmm_region_t* region, size_t pages, uint32_t flags) {
     uintptr_t va = vmm_find_free_range(region, pages);
-    if (!va)
+    if (!va) {
         return 0;
+    }
 
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = (uintptr_t) pmm_alloc_page();
         if (!pa) {
-            for (size_t j = 0; j < i; j++)
+            for (size_t j = 0; j < i; j++) {
                 vmm_unmap(region, va + j * PAGE_SIZE);
+            }
             return 0;
         }
         if (vmm_map(region, va + i * PAGE_SIZE, pa, flags) < 0) {
-            for (size_t j = 0; j <= i; j++)
+            for (size_t j = 0; j <= i; j++) {
                 vmm_unmap(region, va + j * PAGE_SIZE);
+            }
             pmm_free_page((void*) pa);
             return 0;
         }
@@ -596,13 +618,15 @@ uintptr_t vmm_map_anonymous(vmm_region_t* region, size_t pages, uint32_t flags) 
 
 uintptr_t vmm_map_direct_aslr(vmm_region_t* region, uintptr_t phys, size_t pages, uint32_t flags, size_t align) {
     uintptr_t va = vmm_aslr_alloc(region, pages, align, flags);
-    if (!va)
+    if (!va) {
         return 0;
+    }
 
     for (size_t i = 0; i < pages; i++) {
         if (vmm_map(region, va + i * PAGE_SIZE, phys + i * PAGE_SIZE, flags) < 0) {
-            for (size_t j = 0; j < i; j++)
+            for (size_t j = 0; j < i; j++) {
                 vmm_unmap(region, va + j * PAGE_SIZE);
+            }
             vmm_aslr_free(region, va);
             return 0;
         }
@@ -613,20 +637,23 @@ uintptr_t vmm_map_direct_aslr(vmm_region_t* region, uintptr_t phys, size_t pages
 
 uintptr_t vmm_map_anonymous_aslr(vmm_region_t* region, size_t pages, uint32_t flags, size_t align) {
     uintptr_t va = vmm_aslr_alloc(region, pages, align, flags);
-    if (!va)
+    if (!va) {
         return 0;
+    }
 
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = (uintptr_t) pmm_alloc_page();
         if (!pa) {
-            for (size_t j = 0; j < i; j++)
+            for (size_t j = 0; j < i; j++) {
                 vmm_unmap(region, va + j * PAGE_SIZE);
+            }
             vmm_aslr_free(region, va);
             return 0;
         }
         if (vmm_map(region, va + i * PAGE_SIZE, pa, flags) < 0) {
-            for (size_t j = 0; j <= i; j++)
+            for (size_t j = 0; j <= i; j++) {
                 vmm_unmap(region, va + j * PAGE_SIZE);
+            }
             pmm_free_page((void*) pa);
             vmm_aslr_free(region, va);
             return 0;
@@ -639,8 +666,9 @@ uintptr_t vmm_map_anonymous_aslr(vmm_region_t* region, size_t pages, uint32_t fl
 int vmm_unmap_direct_aslr(vmm_region_t* region, uintptr_t va, size_t pages) {
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = vmm_resolve(region, va + i * PAGE_SIZE);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
         vmm_unmap(region, va + i * PAGE_SIZE);
     }
     vmm_aslr_free(region, va);
@@ -650,8 +678,9 @@ int vmm_unmap_direct_aslr(vmm_region_t* region, uintptr_t va, size_t pages) {
 int vmm_unmap_anonymous_aslr(vmm_region_t* region, uintptr_t va, size_t pages) {
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = vmm_resolve(region, va + i * PAGE_SIZE);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
         vmm_unmap(region, va + i * PAGE_SIZE);
         pmm_free_page((void*) pa);
     }
@@ -670,12 +699,14 @@ static void shuffle_array(uintptr_t* array, size_t n) {
 
 flop_randframe_region_t* rand_frames_create(vmm_region_t* region) {
     size_t pages = vmm_count_mapped(region);
-    if (!pages)
+    if (!pages) {
         return NULL;
+    }
 
     vmm_region_t* table_region = vmm_region_create(0, PAGE_PRESENT | PAGE_RW | PAGE_USER, NULL);
-    if (!table_region)
+    if (!table_region) {
         return NULL;
+    }
 
     flop_randframe_region_t* rand_struct = (flop_randframe_region_t*) kmalloc(sizeof(flop_randframe_region_t));
     rand_struct->entries = (flop_rand_entry_t*) kmalloc(sizeof(flop_rand_entry_t) * pages);
@@ -687,11 +718,13 @@ flop_randframe_region_t* rand_frames_create(vmm_region_t* region) {
     size_t idx = 0;
     for (uintptr_t va = 0; va < 0xFFFFFFFF; va += PAGE_SIZE) {
         uintptr_t pa = vmm_resolve(region, va);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
         phys_pages[idx++] = pa;
-        if (idx >= pages)
+        if (idx >= pages) {
             break;
+        }
     }
 
     shuffle_array(phys_pages, pages);
@@ -699,8 +732,9 @@ flop_randframe_region_t* rand_frames_create(vmm_region_t* region) {
     idx = 0;
     for (uintptr_t va = 0; va < 0xFFFFFFFF; va += PAGE_SIZE) {
         uintptr_t pa = vmm_resolve(region, va);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
 
         vmm_unmap(region, va);
 
@@ -716,8 +750,9 @@ flop_randframe_region_t* rand_frames_create(vmm_region_t* region) {
 }
 
 void rand_frames_destroy(flop_randframe_region_t* rand_struct) {
-    if (!rand_struct)
+    if (!rand_struct) {
         return;
+    }
 
     for (size_t i = 0; i < rand_struct->page_count; i++) {
         vmm_unmap(rand_struct->src_region, rand_struct->entries[i].va);
@@ -733,14 +768,16 @@ void rand_frames_destroy(flop_randframe_region_t* rand_struct) {
 uintptr_t rand_frames_aslr_map_direct(
     flop_randframe_region_t* rand_struct, uintptr_t phys, size_t pages, uint32_t flags, size_t align) {
     uintptr_t va = vmm_aslr_alloc(rand_struct->src_region, pages, align, flags);
-    if (!va)
+    if (!va) {
         return 0;
+    }
 
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = rand_struct->entries[i % rand_struct->page_count].pa;
         if (vmm_map(rand_struct->src_region, va + i * PAGE_SIZE, pa, flags) < 0) {
-            for (size_t j = 0; j < i; j++)
+            for (size_t j = 0; j < i; j++) {
                 vmm_unmap(rand_struct->src_region, va + j * PAGE_SIZE);
+            }
             vmm_aslr_free(rand_struct->src_region, va);
             return 0;
         }
@@ -751,22 +788,25 @@ uintptr_t rand_frames_aslr_map_direct(
 uintptr_t
 rand_frames_aslr_map_anonymous(flop_randframe_region_t* rand_struct, size_t pages, uint32_t flags, size_t align) {
     uintptr_t va = vmm_aslr_alloc(rand_struct->src_region, pages, align, flags);
-    if (!va)
+    if (!va) {
         return 0;
+    }
 
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = (uintptr_t) pmm_alloc_page();
         if (!pa) {
-            for (size_t j = 0; j < i; j++)
+            for (size_t j = 0; j < i; j++) {
                 vmm_unmap(rand_struct->src_region, va + j * PAGE_SIZE);
+            }
             vmm_aslr_free(rand_struct->src_region, va);
             return 0;
         }
         pa = rand_struct->entries[i % rand_struct->page_count].pa;
 
         if (vmm_map(rand_struct->src_region, va + i * PAGE_SIZE, pa, flags) < 0) {
-            for (size_t j = 0; j <= i; j++)
+            for (size_t j = 0; j <= i; j++) {
                 vmm_unmap(rand_struct->src_region, va + j * PAGE_SIZE);
+            }
             pmm_free_page((void*) pa);
             vmm_aslr_free(rand_struct->src_region, va);
             return 0;
@@ -778,8 +818,9 @@ rand_frames_aslr_map_anonymous(flop_randframe_region_t* rand_struct, size_t page
 int rand_frames_aslr_unmap_direct(flop_randframe_region_t* rand_struct, uintptr_t va, size_t pages) {
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = vmm_resolve(rand_struct->src_region, va + i * PAGE_SIZE);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
         vmm_unmap(rand_struct->src_region, va + i * PAGE_SIZE);
     }
     vmm_aslr_free(rand_struct->src_region, va);
@@ -789,8 +830,9 @@ int rand_frames_aslr_unmap_direct(flop_randframe_region_t* rand_struct, uintptr_
 int rand_frames_aslr_unmap_anonymous(flop_randframe_region_t* rand_struct, uintptr_t va, size_t pages) {
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = vmm_resolve(rand_struct->src_region, va + i * PAGE_SIZE);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
         vmm_unmap(rand_struct->src_region, va + i * PAGE_SIZE);
         pmm_free_page((void*) pa);
     }
@@ -799,17 +841,20 @@ int rand_frames_aslr_unmap_anonymous(flop_randframe_region_t* rand_struct, uintp
 }
 
 int rand_frames_reshuffle(flop_randframe_region_t* rand_struct) {
-    if (!rand_struct || !rand_struct->entries || !rand_struct->page_count)
+    if (!rand_struct || !rand_struct->entries || !rand_struct->page_count) {
         return -1;
+    }
 
     size_t pages = rand_struct->page_count;
 
     uintptr_t* phys_pages = (uintptr_t*) kmalloc(sizeof(uintptr_t) * pages);
-    if (!phys_pages)
+    if (!phys_pages) {
         return -1;
+    }
 
-    for (size_t i = 0; i < pages; i++)
+    for (size_t i = 0; i < pages; i++) {
         phys_pages[i] = rand_struct->entries[i].pa;
+    }
 
     shuffle_array(phys_pages, pages);
 
@@ -839,17 +884,21 @@ int rand_frames_reshuffle(flop_randframe_region_t* rand_struct) {
 }
 
 int rand_frames_reshuffle_partial(flop_randframe_region_t* rand_struct, size_t start, size_t count) {
-    if (!rand_struct || start >= rand_struct->page_count)
+    if (!rand_struct || start >= rand_struct->page_count) {
         return -1;
-    if (start + count > rand_struct->page_count)
+    }
+    if (start + count > rand_struct->page_count) {
         count = rand_struct->page_count - start;
+    }
 
     uintptr_t* phys_pages = (uintptr_t*) kmalloc(sizeof(uintptr_t) * count);
-    if (!phys_pages)
+    if (!phys_pages) {
         return -1;
+    }
 
-    for (size_t i = 0; i < count; i++)
+    for (size_t i = 0; i < count; i++) {
         phys_pages[i] = rand_struct->entries[start + i].pa;
+    }
 
     shuffle_array(phys_pages, count);
 
@@ -877,16 +926,19 @@ int rand_frames_reshuffle_partial(flop_randframe_region_t* rand_struct, size_t s
 }
 
 flop_randframe_region_t* rand_frames_clone_exact(flop_randframe_region_t* src) {
-    if (!src || !src->entries || !src->page_count)
+    if (!src || !src->entries || !src->page_count) {
         return NULL;
+    }
 
     vmm_region_t* table_region = vmm_region_create(0, PAGE_PRESENT | PAGE_RW | PAGE_USER, NULL);
-    if (!table_region)
+    if (!table_region) {
         return NULL;
+    }
 
     flop_randframe_region_t* clone = (flop_randframe_region_t*) kmalloc(sizeof(flop_randframe_region_t));
-    if (!clone)
+    if (!clone) {
         return NULL;
+    }
 
     clone->entries = (flop_rand_entry_t*) kmalloc(sizeof(flop_rand_entry_t) * src->page_count);
     if (!clone->entries) {
@@ -907,16 +959,19 @@ flop_randframe_region_t* rand_frames_clone_exact(flop_randframe_region_t* src) {
 }
 
 flop_randframe_region_t* rand_frames_clone_randomized(flop_randframe_region_t* src) {
-    if (!src || !src->entries || !src->page_count)
+    if (!src || !src->entries || !src->page_count) {
         return NULL;
+    }
 
     vmm_region_t* table_region = vmm_region_create(0, PAGE_PRESENT | PAGE_RW | PAGE_USER, NULL);
-    if (!table_region)
+    if (!table_region) {
         return NULL;
+    }
 
     flop_randframe_region_t* clone = (flop_randframe_region_t*) kmalloc(sizeof(flop_randframe_region_t));
-    if (!clone)
+    if (!clone) {
         return NULL;
+    }
 
     clone->entries = (flop_rand_entry_t*) kmalloc(sizeof(flop_rand_entry_t) * src->page_count);
     if (!clone->entries) {
@@ -926,8 +981,9 @@ flop_randframe_region_t* rand_frames_clone_randomized(flop_randframe_region_t* s
     clone->src_region = src->src_region;
     clone->table_region = table_region;
     clone->page_count = src->page_count;
-    for (size_t i = 0; i < src->page_count; i++)
+    for (size_t i = 0; i < src->page_count; i++) {
         clone->entries[i].va = src->entries[i].va;
+    }
     uintptr_t* phys_pages = (uintptr_t*) kmalloc(sizeof(uintptr_t) * src->page_count);
     if (!phys_pages) {
         kfree(clone->entries, sizeof(flop_rand_entry_t) * src->page_count);
@@ -935,8 +991,9 @@ flop_randframe_region_t* rand_frames_clone_randomized(flop_randframe_region_t* s
         return NULL;
     }
 
-    for (size_t i = 0; i < src->page_count; i++)
+    for (size_t i = 0; i < src->page_count; i++) {
         phys_pages[i] = src->entries[i].pa;
+    }
 
     shuffle_array(phys_pages, src->page_count);
 
@@ -952,12 +1009,14 @@ flop_randframe_region_t* rand_frames_clone_randomized(flop_randframe_region_t* s
 
 uintptr_t rand_frames_clone_aslr_map_direct(
     flop_randframe_region_t* clone, uintptr_t phys, size_t pages, uint32_t flags, size_t align) {
-    if (!clone || !clone->entries)
+    if (!clone || !clone->entries) {
         return 0;
+    }
 
     uintptr_t va = vmm_aslr_alloc(clone->src_region, pages, align, flags);
-    if (!va)
+    if (!va) {
         return 0;
+    }
 
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = clone->entries[i % clone->page_count].pa;
@@ -974,18 +1033,21 @@ uintptr_t rand_frames_clone_aslr_map_direct(
 
 uintptr_t
 rand_frames_clone_aslr_map_anonymous(flop_randframe_region_t* clone, size_t pages, uint32_t flags, size_t align) {
-    if (!clone || !clone->entries)
+    if (!clone || !clone->entries) {
         return 0;
+    }
 
     uintptr_t va = vmm_aslr_alloc(clone->src_region, pages, align, flags);
-    if (!va)
+    if (!va) {
         return 0;
+    }
 
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = (uintptr_t) pmm_alloc_page();
         if (!pa) {
-            for (size_t j = 0; j < i; j++)
+            for (size_t j = 0; j < i; j++) {
                 vmm_unmap(clone->src_region, va + j * PAGE_SIZE);
+            }
             vmm_aslr_free(clone->src_region, va);
             return 0;
         }
@@ -994,8 +1056,9 @@ rand_frames_clone_aslr_map_anonymous(flop_randframe_region_t* clone, size_t page
         pa = clone->entries[i % clone->page_count].pa;
 
         if (vmm_map(clone->src_region, va + i * PAGE_SIZE, pa, flags) < 0) {
-            for (size_t j = 0; j <= i; j++)
+            for (size_t j = 0; j <= i; j++) {
                 vmm_unmap(clone->src_region, va + j * PAGE_SIZE);
+            }
             pmm_free_page((void*) pa);
             vmm_aslr_free(clone->src_region, va);
             return 0;
@@ -1005,12 +1068,14 @@ rand_frames_clone_aslr_map_anonymous(flop_randframe_region_t* clone, size_t page
 }
 
 int rand_frames_clone_aslr_unmap_direct(flop_randframe_region_t* clone, uintptr_t va, size_t pages) {
-    if (!clone)
+    if (!clone) {
         return -1;
+    }
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = vmm_resolve(clone->src_region, va + i * PAGE_SIZE);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
         vmm_unmap(clone->src_region, va + i * PAGE_SIZE);
     }
     vmm_aslr_free(clone->src_region, va);
@@ -1018,12 +1083,14 @@ int rand_frames_clone_aslr_unmap_direct(flop_randframe_region_t* clone, uintptr_
 }
 
 int rand_frames_clone_aslr_unmap_anonymous(flop_randframe_region_t* clone, uintptr_t va, size_t pages) {
-    if (!clone)
+    if (!clone) {
         return -1;
+    }
     for (size_t i = 0; i < pages; i++) {
         uintptr_t pa = vmm_resolve(clone->src_region, va + i * PAGE_SIZE);
-        if (!pa)
+        if (!pa) {
             continue;
+        }
         vmm_unmap(clone->src_region, va + i * PAGE_SIZE);
         pmm_free_page((void*) pa);
     }
