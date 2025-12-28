@@ -43,7 +43,6 @@ void init_sched(void) {
 
 void init_fs(void) {
     vfs_init();
-    tmpfs_init();
     // procfs init is done within the init process creation
 }
 
