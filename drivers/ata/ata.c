@@ -85,16 +85,6 @@ void ata_write(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer) {
     }
 }
 
-#define ATA_IDENTIFY_DRIVE(drive)                                                                                      \
-    do {                                                                                                               \
-        outb(ATA_PORT_DRIVE_HEAD, drive);                                                                              \
-        outb(ATA_PORT_SECTOR_COUNT, 0);                                                                                \
-        outb(ATA_PORT_LBA_LOW, 0);                                                                                     \
-        outb(ATA_PORT_LBA_MID, 0);                                                                                     \
-        outb(ATA_PORT_LBA_HIGH, 0);                                                                                    \
-        outb(ATA_PORT_COMMAND, 0xEC);                                                                                  \
-    } while (0)
-
 void ata_id(uint8_t drive) {
     ATA_IDENTIFY_DRIVE(drive);
 

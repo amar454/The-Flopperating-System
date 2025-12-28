@@ -42,6 +42,16 @@ typedef enum ata_cmd {
         outb(ATA_PORT_COMMAND, cmd);                                                                                   \
     } while (0)
 
+#define ATA_IDENTIFY_DRIVE(drive)                                                                                      \
+    do {                                                                                                               \
+        outb(ATA_PORT_DRIVE_HEAD, drive);                                                                              \
+        outb(ATA_PORT_SECTOR_COUNT, 0);                                                                                \
+        outb(ATA_PORT_LBA_LOW, 0);                                                                                     \
+        outb(ATA_PORT_LBA_MID, 0);                                                                                     \
+        outb(ATA_PORT_LBA_HIGH, 0);                                                                                    \
+        outb(ATA_PORT_COMMAND, 0xEC);                                                                                  \
+    } while (0)
+
 #define ATA_BSY 0x80
 #define ATA_DRQ 0x08
 #define MAX_SECTORS 256
