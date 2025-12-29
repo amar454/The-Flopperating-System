@@ -6,7 +6,7 @@
 #include "../sched.h"
 #include "../../lib/assert.h"
 #include "../../lib/logging.h"
-extern thread* current_thread;
+extern thread_t* current_thread;
 
 typedef enum {
     MUTEX_UNLOCKED,
@@ -15,7 +15,7 @@ typedef enum {
 
 typedef struct mutex {
     atomic_int state;
-    process_t* owner;
+    thread_t* owner;
     thread_list_t wait_queue;
     spinlock_t wait_lock;
 } mutex_t;
@@ -33,7 +33,7 @@ void mutex_init(mutex_t* mutex, char* name) {
     spinlock_init(&mutex->wait_lock);
 }
 
-void mutex_lock(mutex_t* mutex, process_t* owner) {
+void mutex_lock(mutex_t* mutex, thread_t* owner) {
     thread_t* current = current_thread;
 
     for (;;) {
@@ -68,7 +68,7 @@ void mutex_unlock(mutex_t* mutex) {
     thread_t* current = current_thread;
 
     // if any of this is true, we should not be here
-    if (!current || mutex->owner != current->process) {
+    if (!current || mutex->owner != current) {
         log("mutex: what are you doing bruh", RED);
         return;
     }
@@ -79,7 +79,7 @@ void mutex_unlock(mutex_t* mutex) {
 
     if (next) {
         // if there is a waiting thread, transfer ownership keep it in locked state
-        mutex->owner = next->process;
+        mutex->owner = next;
 
         // wake the sleeping thread
         sched_unblock(next);

@@ -1,6 +1,7 @@
 #ifndef ATA_H
 #define ATA_H
 #include <stdint.h>
+#include "../../task/sync/mutex.h"
 
 typedef enum ata_port {
     ATA_PORT_BASE = 0x1F0,
@@ -18,8 +19,15 @@ typedef enum ata_port {
 
 typedef enum ata_cmd {
     ATA_CMD_READ = 0x20,
-    ATA_CMD_WRITE = 0x30
+    ATA_CMD_WRITE = 0x30,
+    ATA_CMD_IDENT = 0xEC
 } ata_cmd_t;
+
+#define ATA_BSY 0x80
+#define ATA_DRQ 0x08
+#define MAX_SECTORS 256
+#define ATA_SECTOR_SIZE 512
+#define SECTOR_ITERATE for (uint8_t i = 0; i < sectors; i++)
 
 #define ATA_DRIVE_INIT_PREPARE(drive_num)                                                                              \
     do {                                                                                                               \
@@ -39,12 +47,12 @@ typedef enum ata_cmd {
         outb(ATA_PORT_LBA_LOW, (uint8_t) ((lba) >> 8));                                                                \
         outb(ATA_PORT_LBA_MID, (uint8_t) ((lba) >> 16));                                                               \
         outb(ATA_PORT_LBA_HIGH, ((lba) >> 16) & 0xFF);                                                                 \
-        outb(ATA_PORT_COMMAND, cmd);                                                                                   \
+        outb(ATA_PORT_COMMAND, (cmd));                                                                                 \
     } while (0)
 
 #define ATA_IDENTIFY_DRIVE(drive)                                                                                      \
     do {                                                                                                               \
-        outb(ATA_PORT_DRIVE_HEAD, drive);                                                                              \
+        outb(ATA_PORT_DRIVE_HEAD, (drive));                                                                            \
         outb(ATA_PORT_SECTOR_COUNT, 0);                                                                                \
         outb(ATA_PORT_LBA_LOW, 0);                                                                                     \
         outb(ATA_PORT_LBA_MID, 0);                                                                                     \
@@ -52,14 +60,43 @@ typedef enum ata_cmd {
         outb(ATA_PORT_COMMAND, 0xEC);                                                                                  \
     } while (0)
 
-#define ATA_BSY 0x80
-#define ATA_DRQ 0x08
-#define MAX_SECTORS 256
-#define ATA_SECTOR_SIZE 512
-#define SECTOR_ITERATE for (uint8_t i = 0; i < sectors; i++)
+typedef enum {
+    ATA_REQ_READ,
+    ATA_REQ_WRITE,
+    ATA_REQ_IDENTIFY
+} ata_req_type_t;
+
+struct ata_request;
+typedef void (*ata_completion_t)(struct ata_request* req, int status);
+
+typedef struct ata_request {
+    ata_req_type_t type;
+    uint8_t drive;
+    uint32_t lba;
+    uint16_t sector_count;
+    void* buffer;
+    ata_completion_t completion;
+    struct ata_request* next;
+} ata_request_t;
+
+typedef struct {
+    ata_request_t* head;
+    ata_request_t* tail;
+    size_t length;
+    mutex_t lock;
+} ata_queue_t;
+
+extern ata_queue_t ata_queue;
 
 void ata_init_drive(uint8_t drive_num);
 void ata_read(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer);
 void ata_write(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer);
 
-#endif /* ATA_H */
+void ata_queue_init(void);
+void ata_submit(ata_request_t* req);
+void ata_irq_handler(void);
+
+void ata_start_request(ata_request_t* req);
+int ata_finish_request(ata_request_t* req);
+
+#endif
