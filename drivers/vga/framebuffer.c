@@ -48,8 +48,9 @@ void init_colors() {
 }
 
 void framebuffer_set_pixel_buffer(int x, int y, uint32_t color) {
-    if (x < 0 || (uint32_t) x >= _fb_instance.width || y < 0 || (uint32_t) y >= _fb_instance.height)
+    if (x < 0 || (uint32_t) x >= _fb_instance.width || y < 0 || (uint32_t) y >= _fb_instance.height) {
         return;
+    }
 
     uint8_t* _dest_fb = _fb_instance.screen;
     switch (_fb_instance.bpp) {
@@ -90,8 +91,9 @@ void framebuffer_set_pixel_buffer(int x, int y, uint32_t color) {
 }
 
 uint32_t framebuffer_get_pixel_buffer(int x, int y) {
-    if (x < 0 || (uint32_t) x >= _fb_instance.width || y < 0 || (uint32_t) y >= _fb_instance.height)
+    if (x < 0 || (uint32_t) x >= _fb_instance.width || y < 0 || (uint32_t) y >= _fb_instance.height) {
         return 0;
+    }
 
     uint8_t* fb = _fb_instance.screen;
     switch (_fb_instance.bpp) {
@@ -170,8 +172,9 @@ void framebuffer_draw_line(int x1, int y1, int x2, int y2, uint32_t color) {
 
     while (1) {
         framebuffer_put_pixel(x1, y1, color);
-        if (x1 == x2 && y1 == y2)
+        if (x1 == x2 && y1 == y2) {
             break;
+        }
         e2 = err;
         if (e2 > -dx) {
             err -= dy;

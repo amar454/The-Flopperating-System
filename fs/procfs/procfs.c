@@ -108,6 +108,7 @@ static void* procfs_mount(char* dev, char* path, int flags) {
     return pfs.procfs_fs;
 }
 
+// a bunch of garbage
 static int procfs_unmount(struct vfs_mountpoint* mp, char* path) {
     return 0;
 }

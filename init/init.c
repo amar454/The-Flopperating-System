@@ -1,5 +1,6 @@
 #include "../task/sched.h"
 #include "../drivers/io/io.h"
+#include "../drivers/ata/ata.h"
 #include "../drivers/vga/vgahandler.h"
 #include "../lib/logging.h"
 #include <stdint.h>
@@ -27,6 +28,11 @@ void init_cpu(void) {
     interrupts_init();
 }
 
+void init_block() {
+    ata_init();
+    sleep_seconds(1);
+}
+
 void init_mem(multiboot_info_t* mb_info) {
     early_allocator_destroy();
     pmm_init(mb_info);
@@ -49,6 +55,7 @@ void init_fs(void) {
 typedef enum {
     INIT_STAGE_EARLY,
     INIT_STAGE_CPU,
+    INIT_STAGE_BLOCK,
     INIT_STAGE_MEM,
     INIT_STAGE_FS,
     INIT_STAGE_SCHED,
@@ -63,6 +70,9 @@ void init(multiboot_info_t* mb_info) {
                 break;
             case INIT_STAGE_CPU:
                 init_cpu();
+                break;
+            case INIT_STAGE_BLOCK:
+                init_block();
                 break;
             case INIT_STAGE_MEM:
                 init_mem(mb_info);

@@ -55,6 +55,7 @@ static inline void pushlock_lock(pushlock_t* pl, process_t* owner) {
     thread_t* t = current_thread;
 
     for (;;) {
+        // try fast path
         if (pushlock_fast_path(pl, owner)) {
             return;
         }
@@ -74,7 +75,7 @@ static inline void pushlock_lock(pushlock_t* pl, process_t* owner) {
         atomic_fetch_or_explicit(&pl->state, PUSHLOCK_WAITERS, memory_order_relaxed);
         sched_thread_list_add(t, &pl->wait_queue);
 
-        sched_block(); // todo: race condition here
+        sched_block(); // todo: race condition here?
 
         // queue entry is visible
         // let someone else use the wait lock

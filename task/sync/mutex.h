@@ -1,4 +1,4 @@
-
+#pragma once
 #include "spinlock.h"
 #include <stdint.h>
 #include <stdatomic.h>
@@ -20,7 +20,7 @@ typedef struct mutex {
     spinlock_t wait_lock;
 } mutex_t;
 
-void mutex_init(mutex_t* mutex, char* name) {
+static inline void mutex_init(mutex_t* mutex, char* name) {
     atomic_store(&mutex->state, MUTEX_UNLOCKED);
     mutex->owner = NULL;
 
@@ -33,7 +33,7 @@ void mutex_init(mutex_t* mutex, char* name) {
     spinlock_init(&mutex->wait_lock);
 }
 
-void mutex_lock(mutex_t* mutex, thread_t* owner) {
+static inline void mutex_lock(mutex_t* mutex, thread_t* owner) {
     thread_t* current = current_thread;
 
     for (;;) {
@@ -64,7 +64,7 @@ void mutex_lock(mutex_t* mutex, thread_t* owner) {
     }
 }
 
-void mutex_unlock(mutex_t* mutex) {
+static inline void mutex_unlock(mutex_t* mutex) {
     thread_t* current = current_thread;
 
     // if any of this is true, we should not be here

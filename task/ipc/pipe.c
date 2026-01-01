@@ -16,6 +16,7 @@ void pipe_init(pipe_t* pipe) {
     pipe->read_bytes = 0;
     pipe->write_bytes = 0;
 
+    // mark reading and writing ends as open
     pipe->read_fd_open = true;
     pipe->write_fd_open = true;
 }
@@ -26,15 +27,23 @@ void pipe_close(pipe_t* pipe, int write) {
     bool free_now = false;
 
     if (write) {
+        // close writing end
         pipe->write_fd_open = false;
-        if (refcount_dec_and_test(&pipe->write_refs))
+        // dec write ref count and check if it reaches zero
+        if (refcount_dec_and_test(&pipe->write_refs)) {
             free_now = true;
+        }
     } else {
+        // close reading end
         pipe->read_fd_open = false;
-        if (refcount_dec_and_test(&pipe->read_refs))
+        // dec read ref count and check if it reaches zero
+        if (refcount_dec_and_test(&pipe->read_refs)) {
             free_now = true;
+        }
     }
 
+    // if both ends are closed and no refs remain,
+    // free the pipe
     if (!pipe->read_fd_open && !pipe->write_fd_open && atomic_load(&pipe->read_refs) == 0 &&
         atomic_load(&pipe->write_refs) == 0) {
         spinlock_unlock(&pipe->lock, true);
@@ -48,6 +57,7 @@ void pipe_close(pipe_t* pipe, int write) {
 int pipe_write(pipe_t* pipe, char* addr, int len) {
     int written = 0;
 
+    // loop until all bytes are written
     while (written < len) {
         spinlock(&pipe->lock);
 
@@ -67,6 +77,7 @@ int pipe_write(pipe_t* pipe, char* addr, int len) {
             continue;
         }
 
+        // write byte to buffer
         pipe->data[w] = addr[written];
         pipe->write_bytes++;
         written++;
@@ -79,14 +90,15 @@ int pipe_write(pipe_t* pipe, char* addr, int len) {
 
 int pipe_read(pipe_t* pipe, char* addr, int len) {
     int n = 0;
-
+    // loop until all bytes are read
     while (n < len) {
         spinlock(&pipe->lock);
-
+        // check if buffer is empty but writers still exist
         if (pipe->read_bytes == pipe->write_bytes && atomic_load(&pipe->write_refs) > 0) {
+            // if the current proc is terminated, return what we've read
             if (proc_get_current()->state == TERMINATED) {
                 spinlock_unlock(&pipe->lock, true);
-                return n ? n : -1;
+                return n ? n : -1; // if no bytes were read, return -1
             }
 
             spinlock_unlock(&pipe->lock, true);
@@ -94,14 +106,17 @@ int pipe_read(pipe_t* pipe, char* addr, int len) {
             continue;
         }
 
+        // the buffer empty and no writers left
         if (pipe->read_bytes == pipe->write_bytes && atomic_load(&pipe->write_refs) == 0) {
             spinlock_unlock(&pipe->lock, true);
             return n;
         }
 
+        // read byte from buffer
         addr[n] = pipe->data[pipe->read_bytes % sizeof(pipe->data)];
         pipe->read_bytes++;
 
+        // go to next byte
         n++;
 
         spinlock_unlock(&pipe->lock, true);

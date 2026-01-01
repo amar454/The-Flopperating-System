@@ -492,6 +492,11 @@ static int proc_copy_fds(process_t* dest, process_t* src) {
     return 0;
 }
 
+#define SIG_ITERATE                                                                                                    \
+    for (int i = 0; i < SIGMAX; i++) {                                                                                 \
+        child->sig_handlers[i] = parent->sig_handlers[i];                                                              \
+    }
+
 static void proc_copy_signal_state(process_t* parent, process_t* child) {
     spinlock(&parent->sig_lock);
     spinlock(&child->sig_lock);
@@ -499,9 +504,7 @@ static void proc_copy_signal_state(process_t* parent, process_t* child) {
     child->sig_mask = parent->sig_mask;
     child->sig_pending = 0;
 
-    for (int i = 0; i < SIGMAX; i++) {
-        child->sig_handlers[i] = parent->sig_handlers[i];
-    }
+    SIG_ITERATE;
 
     spinlock_unlock(&child->sig_lock, true);
     spinlock_unlock(&parent->sig_lock, true);

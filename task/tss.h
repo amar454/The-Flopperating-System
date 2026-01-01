@@ -3,11 +3,10 @@
 
 #include <stdint.h>
 
-
 typedef struct __attribute__((packed)) tss_entry {
     uint32_t prev_tss;
-    uint32_t esp0;      
-    uint32_t ss0;       
+    uint32_t esp0;
+    uint32_t ss0;
     uint32_t esp1;
     uint32_t ss1;
     uint32_t esp2;
@@ -33,7 +32,6 @@ typedef struct __attribute__((packed)) tss_entry {
     uint16_t trap;
     uint16_t iomap_base;
 } tss_entry_t;
-
 
 void tss_init(uint32_t idx, uint32_t kss, uint32_t kesp);
 void tss_set_kernel_stack(uint32_t stack);

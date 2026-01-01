@@ -262,7 +262,7 @@ void keyboard_task(void* arg) {
     if (c == '\b' && pos > 0) {
         pos--;
         vga_index--;
-        put_char(' ', BLACK);
+        echo(" ", BLACK);
         vga_index--;
         uint16_t x = vga_index % VGA_WIDTH;
         uint16_t y = vga_index / VGA_WIDTH;

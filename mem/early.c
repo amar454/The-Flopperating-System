@@ -59,15 +59,17 @@ void* early_reserve_page(void) {
                     }
                 }
 
-                if (already_taken)
+                if (already_taken) {
                     continue;
+                }
 
                 void* page = (void*) p;
                 early_reserved[early_reserved_count++] = page;
 
                 uint8_t* b = (uint8_t*) page;
-                for (uint32_t i = 0; i < PAGE_SIZE; i++)
+                for (uint32_t i = 0; i < PAGE_SIZE; i++) {
                     b[i] = 0;
+                }
 
                 return page;
             }
@@ -103,16 +105,18 @@ void early_allocator_init(void) {
 
     for (int i = 0; i < EARLY_POOL_PAGES; i++) {
         void* p = early_reserve_page();
-        if (i == 0)
+        if (i == 0) {
             first_pool = p;
+        }
     }
 
     early.pool_base = (uint8_t*) first_pool;
     early.blocks_total = (EARLY_POOL_PAGES * PAGE_SIZE) / EARLY_BLOCK_SIZE;
     early.blocks_free = early.blocks_total;
 
-    for (uint32_t i = 0; i < sizeof(early.bitmap); i++)
+    for (uint32_t i = 0; i < sizeof(early.bitmap); i++) {
         early.bitmap[i] = 0;
+    }
 
     early.initialized = true;
 }
@@ -161,18 +165,23 @@ void early_free(void* ptr) {
 }
 
 void early_allocator_destroy(void) {
+    // cannot destroy uninitialized allocator
     if (!early.initialized) {
         return;
     }
 
+    // set all bits to zero
     for (uint32_t i = 0; i < sizeof(early.bitmap); i++) {
         early.bitmap[i] = 0;
     }
 
     uint8_t* p = early.pool_base;
+
+    // release all pages
     for (uint32_t pg = 0; pg < EARLY_POOL_PAGES; pg++) {
-        for (uint32_t i = 0; i < PAGE_SIZE; i++)
+        for (uint32_t i = 0; i < PAGE_SIZE; i++) {
             p[i] = 0;
+        }
         early_release_page(p);
         p += PAGE_SIZE;
     }

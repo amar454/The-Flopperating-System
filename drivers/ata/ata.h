@@ -1,3 +1,4 @@
+#pragma once
 #ifndef ATA_H
 #define ATA_H
 #include <stdint.h>
@@ -98,5 +99,7 @@ void ata_irq_handler(void);
 
 void ata_start_request(ata_request_t* req);
 int ata_finish_request(ata_request_t* req);
+
+void ata_init(void);
 
 #endif
