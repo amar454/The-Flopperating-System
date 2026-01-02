@@ -1,6 +1,6 @@
 /*
 
-Copyright 2024, 2025 Amar Djulovic <aaamargml@gmail.com>
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
 This file is part of FloppaOS.
 
@@ -217,7 +217,7 @@ void draw_floppaos_logo() {
         " |   |   / ___/__  _______/ /____  ____ ___                                   |   | \n"
         " |   |   \\__ \\/ / / / ___/ __/ _ \\/ __ `__ \\                                  |   | \n"
         " |   |  ___/ / /_/ (__  / /_/  __/ / / / / /                                  |   | \n"
-        " |   | /____/\\__, /____/\\__/\\___/_/ /_/ /_/                                   |   | \n"
+        " |   | /____/\\__, /____/\\__/\\___/_/ /_/ /_/   " VERSION "                          |   | \n"
         " |   |      /____/                                                            |   | \n"
         " |___|                                                                        |___| \n"
         "(_____)----------------------------------------------------------------------(_____)\n";
@@ -226,98 +226,14 @@ void draw_floppaos_logo() {
     sleep_seconds(2);
 }
 
-void print_festive_message() {
-    const char* art = "   _      _      _      _      _      _      _      _      _      _      _   \n"
-                      " _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_ \n"
-                      "(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)\n"
-                      " (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_) \n"
-                      "   _    ___ ___    ___  ____   ____   __ __                              _   \n"
-                      " _( )_ |   T   T  /  _]|    \\ |    \\ |  T  T                           _( )_ \n"
-                      "(_ o _)| _   _ | /  [_ |  D  )|  D  )|  |  |                          (_ o _)\n"
-                      " (_,_) |  \\_/  |Y    _]|    / |    / |  ~  |                           (_,_) \n"
-                      "   _   |   |   ||   [_ |    \\ |    \\ l___, |                             _   \n"
-                      " _( )_ |   |   ||     T|  .  Y|  .  Y|     !                           _( )_ \n"
-                      "(_ o _)l___j___jl_____jl__j\\_jl__j\\_jl____/                           (_ o _)\n"
-                      " (_,_)                                                                 (_,_) \n"
-                      "   _       __  __ __  ____   ____  _____ ______  ___ ___   ____  _____   _   \n"
-                      " _( )_    /  ]|  T  T|    \\ l    j/ ___/|      T|   T   T /    T/ ___/ _( )_ \n"
-                      "(_ o _)  /  / |  l  ||  D  ) |  T(   \\_ |      || _   _ |Y  o  (   \\_ (_ o _)\n"
-                      " (_,_)  /  /  |  _  ||    /  |  | \\__  Tl_j  l_j|  \\_/  ||     |\\__  T (_,_) \n"
-                      "   _   /   \\_ |  |  ||    \\  |  | /  \\ |  |  |  |   |   ||  _  |/  \\ |   _   \n"
-                      " _( )_ \\     ||  |  ||  .  Y j  l \\    |  |  |  |   |   ||  |  |\\    | _( )_ \n"
-                      "(_ o _) \\____jl__j__jl__j\\_j|____j \\___j  l__j  l___j___jl__j__j \\___j(_ o _)\n"
-                      " (_,_)                                                                 (_,_) \n"
-                      "   _     ____  ____   ___        __ __   ____  ____  ____  __ __         _   \n"
-                      " _( )_  /    T|    \\ |   \\      |  T  T /    T|    \\|    \\|  T  T      _( )_ \n"
-                      "(_ o _)Y  o  ||  _  Y|    \\     |  l  |Y  o  ||  o  )  o  )  |  |     (_ o _)\n"
-                      " (_,_) |     ||  |  ||  D  Y    |  _  ||     ||   _/|   _/|  ~  |      (_,_) \n"
-                      "   _   |  _  ||  |  ||     |    |  |  ||  _  ||  |  |  |  l___, |        _   \n"
-                      " _( )_ |  |  ||  |  ||     |    |  |  ||  |  ||  |  |  |  |     !      _( )_ \n"
-                      "(_ o _)l__j__jl__j__jl_____j    l__j__jl__j__jl__j  l__j  l____/      (_ o _)\n"
-                      " (_,_)                                                                 (_,_) \n"
-                      "   _    ____     ___ __    __      __ __    ___   ____  ____   __        _   \n"
-                      " _( )_ |    \\   /  _]  T__T  T    |  T  T  /  _] /    T|    \\ |  T     _( )_ \n"
-                      "(_ o _)|  _  Y /  [_|  |  |  |    |  |  | /  [_ Y  o  ||  D  )|  |    (_ o _)\n"
-                      " (_,_) |  |  |Y    _]  |  |  |    |  ~  |Y    _]|     ||    / |__j     (_,_) \n"
-                      "   _   |  |  ||   [_l  `  '  !    l___, ||   [_ |  _  ||    \\  __        _   \n"
-                      " _( )_ |  |  ||     T\\      /     |     !|     T|  |  ||  .  Y|  T     _( )_ \n"
-                      "(_ o _)l__j__jl_____j \\_/\\_/      l____/ l_____jl__j__jl__j\\_jl__j    (_ o _)\n"
-                      " (_,_)                                                                 (_,_) \n"
-                      "   _      _      _      _      _      _      _      _      _      _      _   \n"
-                      " _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_  _( )_ \n"
-                      "(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)(_ o _)\n"
-                      " (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_)  (_,_) \n";
-
-    echo(art, GREEN);
-}
-
-static void check_multiboot_magic(uint32_t magic) {
-    if (magic != MULTIBOOT_BOOTLOADER_MAGIC) {
-        vga_place_string(0, 0, "Multiboot magic number incorrect!", RED);
-        halt();
-    }
-    vga_place_string(0, 0, "Multiboot magic number correct!", GREEN);
-}
-
-void fshell_task(void* arg);
-
-static void check_multiboot_info(multiboot_info_t* mb_info) {
-    if (!mb_info) {
-        vga_place_string(0, 0, "Multiboot info pointer is NULL!", RED);
-        halt();
-    }
-    vga_place_string(0, 0, "Multiboot info pointer is correct!", GREEN);
-    if (mb_info->flags & MULTIBOOT_INFO_MEMORY) {
-        vga_place_string(0, 0, "Multiboot info pointer has memory information!", GREEN);
-    } else {
-        vga_place_string(0, 0, "Multiboot info pointer does not have memory information!", RED);
-        halt();
-    }
-}
-
-#define VERSION "0.1.3-alpha"
-
 int kmain(uint32_t magic, multiboot_info_t* mb_info) {
-    framebuffer_init(mb_info);
-    init_console();
-    log("floppaOS kernel framebuffer: init - ok\n", GREEN);
-    log("floppaOS - The Floperrating system, a free and open-source 32-bit hobby operating system\n", YELLOW);
-    sleep_seconds(1);
-    log("Kernel compilation time: " __DATE__ " at " __TIME__ "\n", YELLOW);
-    log("License: GPLv3\n", YELLOW);
-    log("Date created: October 2024\n", YELLOW);
-    log("Author: Amar Djulovic <aaamargml@gmail.com>\n", YELLOW);
-    log("Kernel version: " VERSION "\n", YELLOW);
-    log("Starting floppaOS kernel...\n", YELLOW);
-
     init(mb_info);
-    echo("floppaOS kernel booted! now we do nothing.\n", GREEN);
+    echo("The Flopperating System has finished kernel booting! Now we do nothing.\n", GREEN);
 
     draw_floppaos_logo();
-    echo("floppaOS, The Flopperating System - Copyright (C) 2024, 2025 Amar Djulovic <aaamargml@gmail.com>\n",
+    echo("floppaOS, The Flopperating System - Copyright (C) 2024-2026 Amar Djulovic <aaamargml@gmail.com>\n",
          YELLOW); // copyright notice
 
-    print_festive_message();
     while (1) {
     }
     return 0;

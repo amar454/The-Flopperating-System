@@ -7,7 +7,7 @@
 int kmain(uint32_t magic, multiboot_info_t* mb_info);
 
 void warn(uint32_t address, const char* msg, const char* warning);
-
+#define VERSION "v0.1.2"
 // kernel warning macros
 #define WARN(addr, msg, err) warn(addr, msg, warning)
 #define WARN_LOW_MEMORY_AVAILABLE(addr, used_mem)                                                                      \

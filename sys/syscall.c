@@ -1,6 +1,6 @@
 /*
 
-Copyright 2024, 2025 Amar Djulovic <aaamargml@gmail.com>
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
 This file is part of FloppaOS.
 

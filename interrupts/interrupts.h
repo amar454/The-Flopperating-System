@@ -53,8 +53,6 @@ static uint8_t interrupt_stack[ISR_STACK_SIZE] __attribute__((aligned(16)));
 
 void interrupts_init(void);
 
-void set_idt_entry(int n, uint32_t base, uint16_t sel, uint8_t flags);
-
 #define IA32_INT_MASK() __asm__ volatile("cli" ::: "memory")
 
 #define IA32_INT_UNMASK() __asm__ volatile("sti" ::: "memory")

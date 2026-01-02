@@ -61,6 +61,25 @@ typedef enum ata_cmd {
         outb(ATA_PORT_COMMAND, 0xEC);                                                                                  \
     } while (0)
 
+#define SECTOR_WORD_ITERATE for (uint16_t j = 0; j < ATA_SECTOR_SIZE / 2; j++)
+#define ID_WORD_ITERATE for (uint16_t i = 0; i < 256; i++)
+#define ATA_PORT_DRQ (!(inb(ATA_PORT_STATUS) & ATA_DRQ))
+#define ATA_PORT_BUSY (!(inb(ATA_PORT_STATUS) & ATA_BSY))
+#define ATTEMPT_IDENTITY_REQUEST                                                                                       \
+    identify_req.type = ATA_REQ_IDENTIFY;                                                                              \
+    identify_req.drive = drive;                                                                                        \
+    identify_req.lba = 0;                                                                                              \
+    identify_req.sector_count = 0;                                                                                     \
+    identify_req.buffer = NULL;                                                                                        \
+    identify_req.next = NULL;                                                                                          \
+    identify_req.completion = NULL;                                                                                    \
+    ata_start_request(&identify_req);
+
+#define CATCH_DRIVE_ERR                                                                                                \
+    if (inb(ATA_PORT_STATUS) & 0x01) {                                                                                 \
+        log_uint("ata error: ", inb(ATA_PORT_ERROR));                                                                  \
+    }
+
 typedef enum {
     ATA_REQ_READ,
     ATA_REQ_WRITE,
@@ -90,8 +109,8 @@ typedef struct {
 extern ata_queue_t ata_queue;
 
 void ata_init_drive(uint8_t drive_num);
-void ata_read(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer);
-void ata_write(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer);
+void ata_read(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer, bool queued);
+void ata_write(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer, bool queued);
 
 void ata_queue_init(void);
 void ata_submit(ata_request_t* req);

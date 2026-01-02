@@ -1,3 +1,16 @@
+/*
+
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
+
+This file is part of FloppaOS.
+
+FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+
+FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+
+*/
 #include "../task/sched.h"
 #include "../drivers/io/io.h"
 #include "../drivers/ata/ata.h"
@@ -17,6 +30,18 @@
 #include "../multiboot/multiboot.h"
 
 void init_early(multiboot_info_t* mb_info) {
+    framebuffer_init(mb_info);
+    init_console();
+    log("floppaOS kernel framebuffer: init - ok\n", GREEN);
+    log("floppaOS - The Floperrating system, a free and open-source 32-bit hobby operating system\n", YELLOW);
+    sleep_seconds(1);
+    log("Kernel compilation time: " __DATE__ " at " __TIME__ "\n", YELLOW);
+    log("License: GPLv3\n", YELLOW);
+    log("Date created: October 2024\n", YELLOW);
+    log("Author: Amar Djulovic <aaamargml@gmail.com>\n", YELLOW);
+    log("Kernel version: " VERSION "\n", YELLOW);
+    log("Starting floppaOS kernel...\n", YELLOW);
+
     early_allocator_init();
     early_bootstrap(mb_info);
     // to be destroyed in init_mem()

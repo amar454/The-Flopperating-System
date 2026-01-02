@@ -1,3 +1,16 @@
+/*
+
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
+
+This file is part of FloppaOS.
+
+FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+
+FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+
+*/
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -10,14 +23,15 @@ extern thread_t* current_thread;
 ata_queue_t ata_queue;
 
 static void ata_bsy_wait(void) {
-    while (!(inb(ATA_PORT_STATUS) & ATA_BSY)) {
+    while (ATA_PORT_BUSY) {
         IA32_CPU_RELAX();
     }
 }
 
 static void ata_drq_wait(void) {
-    while (!(inb(ATA_PORT_STATUS) & ATA_DRQ))
-        ;
+    while (ATA_PORT_DRQ) {
+        IA32_CPU_RELAX();
+    }
 }
 
 static int ata_op_validate(uint8_t sectors, uint8_t* buffer) {
@@ -53,25 +67,25 @@ void ata_queue_init(void) {
 }
 
 // read sectors into buffer
-void ata_read(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer) {
+void ata_read(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer, bool queued) {
     if (ata_op_validate(sectors, buffer) != 0) {
         return; // bullshit params
     }
 
     // prepare read op
-    ATA_PREPARE_OP(drive, lba, sectors, ATA_CMD_READ);
+    if (!queued) {
+        ATA_PREPARE_OP(drive, lba, sectors, ATA_CMD_READ);
+    }
 
     // iterate through sectors
     SECTOR_ITERATE {
         // wait for drive to be ready
         ata_bsy_wait();
-        if (inb(ATA_PORT_STATUS) & 0x01) {
-            log_uint("ata error: ", inb(ATA_PORT_ERROR));
-        }
+        CATCH_DRIVE_ERR;
 
         // wait for data req
         ata_drq_wait();
-        for (uint16_t j = 0; j < ATA_SECTOR_SIZE / 2; j++) {
+        SECTOR_WORD_ITERATE {
             // read word
             ((uint16_t*) buffer)[j] = inw(ATA_PORT_DATA);
         }
@@ -81,25 +95,25 @@ void ata_read(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer) {
     }
 }
 
-void ata_write(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer) {
+void ata_write(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer, bool queued) {
     if (ata_op_validate(sectors, buffer) != 0) {
         return; // bs params
     }
 
     // prepare write op
-    ATA_PREPARE_OP(drive, lba, sectors, ATA_CMD_WRITE);
+    if (!queued) {
+        ATA_PREPARE_OP(drive, lba, sectors, ATA_CMD_WRITE);
+    }
 
     // iterate through sectors
     SECTOR_ITERATE {
         // wait for drive to be ready
         ata_bsy_wait();
-        if (inb(ATA_PORT_STATUS) & 0x01) {
-            log_uint("ata error: ", inb(ATA_PORT_ERROR));
-        }
+        CATCH_DRIVE_ERR;
 
         // wait for data req
         ata_drq_wait();
-        for (uint16_t j = 0; j < ATA_SECTOR_SIZE / 2; j++) {
+        SECTOR_WORD_ITERATE {
             // write word
             outw(ATA_PORT_DATA, ((uint16_t*) buffer)[j]);
         }
@@ -170,7 +184,7 @@ void ata_start_request(ata_request_t* req) {
 int ata_finish_request(ata_request_t* req) {
     if (req->type == ATA_REQ_IDENTIFY) {
         uint16_t tmp[256];
-        for (uint16_t i = 0; i < 256; i++) {
+        ID_WORD_ITERATE {
             // read id words
             tmp[i] = inw(ATA_PORT_BASE);
         }
@@ -178,12 +192,12 @@ int ata_finish_request(ata_request_t* req) {
     }
 
     if (req->type == ATA_REQ_READ) {
-        ata_read(req->drive, req->lba, (uint8_t) req->sector_count, req->buffer);
+        ata_read(req->drive, req->lba, (uint8_t) req->sector_count, req->buffer, true);
         return 0;
     }
 
     if (req->type == ATA_REQ_WRITE) {
-        ata_write(req->drive, req->lba, (uint8_t) req->sector_count, req->buffer);
+        ata_write(req->drive, req->lba, (uint8_t) req->sector_count, req->buffer, true);
         return 0;
     }
 
@@ -259,17 +273,9 @@ void ata_init(void) {
 
         // attempt to IDENTIFY using a temporary request
         ata_request_t identify_req;
-        identify_req.type = ATA_REQ_IDENTIFY;
-        identify_req.drive = drive;
-        identify_req.lba = 0;
-        identify_req.sector_count = 0;
-        identify_req.buffer = NULL;
-        identify_req.next = NULL;
-        identify_req.completion = NULL;
+        ATTEMPT_IDENTITY_REQUEST;
 
-        ata_start_request(&identify_req);
-
-        // add timeout for identify finish
+        // timeout for identify finish
         timeout = 100000;
         while (--timeout && !(inb(ATA_PORT_STATUS) & ATA_DRQ)) {
             IA32_CPU_RELAX();

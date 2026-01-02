@@ -5,11 +5,14 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "../multiboot/multiboot.h"
-#define EARLY_PAGES_TOTAL 5
+#define EARLY_PAGES_TOTAL 10
 #define EARLY_META_PAGE 0
-#define EARLY_POOL_PAGES 4
+#define EARLY_POOL_PAGES 9
 #define EARLY_BLOCK_SIZE 256
 #define PAGE_SIZE 4096
+#define EARLY_BIT_SET(i) (early.bitmap[(i) >> 3] |= (1u << ((i) & 7)))
+#define EARLY_BIT_CLEAR(i) (early.bitmap[(i) >> 3] &= ~(1u << ((i) & 7)))
+#define EARLY_BIT_TEST(i) (early.bitmap[(i) >> 3] & (1u << ((i) & 7)))
 
 struct early_info {
     uint8_t* pool_base;

@@ -253,9 +253,7 @@ uint64_t pmm_count_usable_pages(multiboot_info_t* mb, uintptr_t* out_region_star
         uintptr_t region_end = PMM_REGION_END(mm);
 
         if (PMM_REGION_USABLE(mm)) {
-            log_address("pmm: region start (usable): ", region_start);
-            log_address("pmm: region end (usable): ", region_end);
-            echo("----------------------------------------\n", WHITE);
+            log_address("pmm: usable region start: ", region_start);
             if (region_end > region_start) {
                 uint64_t region_bytes = (uint64_t) (region_end - region_start);
                 total_bytes += region_bytes;
@@ -265,9 +263,7 @@ uint64_t pmm_count_usable_pages(multiboot_info_t* mb, uintptr_t* out_region_star
                 }
             }
         } else {
-            log_address("pmm: region start (reserved): ", region_start);
-            log_address("pmm: region end (reserved): ", region_end);
-            echo("----------------------------------------\n", WHITE);
+            log_address("pmm: reserved region start: ", region_start);
         }
 
         ptr = PMM_MMAP_NEXT(mm);
@@ -308,8 +304,6 @@ pmm_buddy_init(uint64_t usable_pages, uintptr_t memory_base_region_start_usable,
 
     log_uint("buddy: total pages: ", buddy.total_pages);
     log_uint("buddy: page_info size (pages): ", page_info_pages);
-    log_address("buddy: memory_base: ", buddy.memory_base);
-    log_address("buddy: page_info: ", (uintptr_t) buddy.page_info);
     log_address("buddy: memory_start: ", buddy.memory_start);
     log_address("buddy: memory_end: ", buddy.memory_end);
 
