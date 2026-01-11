@@ -1,6 +1,6 @@
 /*
 
-Copyright 2024, 2025 Amar Djulovic <aaamargml@gmail.com>
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
 This file is part of FloppaOS.
 
@@ -78,7 +78,7 @@ static void enable_paging(uint8_t enable_wp, uint8_t enable_pse) {
     }
 }
 
-static void zero_area(void* area) {
+static void paging_area_zero(void* area) {
     flop_memset(area, 0, TABLE_BYTES);
 }
 
@@ -98,7 +98,7 @@ static int paging_init_page_directory() {
         return -1;
     }
     uint32_t* pd = (uint32_t*) kphys_to_virt(pd_phys);
-    zero_area(pd);
+    paging_area_zero(pd);
     return 0;
 }
 
@@ -112,7 +112,7 @@ static int paging_alloc_and_zero_pt(uintptr_t* out_phys, uint32_t** out_virt, co
     }
 
     *out_virt = (uint32_t*) kphys_to_virt(*out_phys);
-    zero_area(*out_virt);
+    paging_area_zero(*out_virt);
     return 0;
 }
 
@@ -164,7 +164,7 @@ static int paging_init_recursive_mapping() {
     uint32_t* pt1022 = (uint32_t*) kphys_to_virt(pt1022_phys);
 
     // zero out pt1022
-    zero_area(pt1022);
+    paging_area_zero(pt1022);
 
     // map the pd itself in the 1023rd entry (recursive mapping)
     pd[1023] = (uint32_t) (pd_phys & PAGE_MASK) | PAGE_PRESENT | PAGE_RW;
@@ -192,7 +192,7 @@ static int paging_init_paging_stack() {
     uint32_t* new_pt_virt = &pg_tbls[pt_idx * PAGE_ENTRIES];
 
     // zero out new page table
-    zero_area(new_pt_virt);
+    paging_area_zero(new_pt_virt);
 
     // invalidate page table entry in TLB
     invlpg((void*) KERNEL_STACK_PAGING_ADDR);

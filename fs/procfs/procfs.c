@@ -2,13 +2,13 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 #include "../vfs/vfs.h"
@@ -113,7 +113,7 @@ static void* procfs_mount(char* dev, char* path, int flags) {
             return NULL;
         }
 
-        pfs.procfs_fs->filesystem_type = VFS_TYPE_PROCFS;
+        pfs.procfs_fs->filesystem_type = VFS_FS_PROCFS;
         pfs.procfs_fs->op_table = pfs.procfs_ops;
         pfs.procfs_fs->previous = NULL;
     }
@@ -222,5 +222,6 @@ void procfs_init() {
     pfs.procfs_ops.ioctl = procfs_ioctl;
     pfs.procfs_ops.link = procfs_link;
 
+    vfs_mount("/", "/proc/", VFS_FS_PROCFS);
     log("procfs: init - ok\n", GREEN);
 }

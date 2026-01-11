@@ -1,14 +1,14 @@
 /*
 
-Copyright 2024, 2025 Amar Djulovic <aaamargml@gmail.com>
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 
@@ -393,7 +393,7 @@ int proc_create_init_process() {
     init_process->cwd = NULL;
 
     procfs_init();
-    procfs_add_entry("init_process", VFS_TYPE_PROCFS);
+    procfs_add_entry("init_process", VFS_FS_PROCFS);
 
     if (proc_init_process_create_thread(init_process, proc_init_process_dummy_entry, 0, "init_thread") < 0) {
         log("init_process create_thread failed\n", RED);
@@ -582,17 +582,19 @@ pid_t proc_fork(process_t* parent) {
     if (!(child = proc_alloc())) {
         return -1;
     }
-
+    // copy pagemap (child inherits parent pagemap)
     if (proc_copy_child_pagemap(parent, child) < 0) {
         proc_fork_failed_child_data_structures(child);
         return -1;
     }
 
+    // assign current working directory
     if (proc_cwd_assign(child, parent->cwd) < 0) {
         proc_fork_failed_child_data_structures(child);
         return -1;
     }
 
+    // copy file descriptors.
     if (proc_copy_fds(child, parent) < 0) {
         proc_fork_failed_child_data_structures(child);
         return -1;
@@ -613,6 +615,7 @@ pid_t proc_fork(process_t* parent) {
 
     spinlock(&proc_tbl->proc_table_lock);
 
+    // assign id's for child
     if (proc_assign_child_ids(parent, child) < 0) {
         spinlock_unlock(&proc_tbl->proc_table_lock, true);
         proc_fork_failed_child_data_structures(child);
@@ -624,7 +627,7 @@ pid_t proc_fork(process_t* parent) {
 
     spinlock_unlock(&proc_tbl->proc_table_lock, true);
 
-    proc_copy_signal_state(parent, child);
+    proc_copy_signal_state(parent, child); // potential race
 
     return child->pid;
 }

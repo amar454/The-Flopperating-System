@@ -18,219 +18,111 @@ You should have received a copy of the GNU General Public License along with Flo
 #include "../../apps/echo.h"
 #include "../vga/vgahandler.h"
 #include "../io/io.h"
+#include "../../task/sched.h"
 #include <stdint.h>
 
 static int shift_pressed = 0;
 static int ctrl_pressed = 0;
 static int alt_pressed = 0;
 
-int command_ready = 0;
+typedef enum keyboard_layout {
+    QWERTY
+} keyboard_layout_t;
+
+typedef struct keyboard {
+    keyboard_layout_t layout;
+    const char* kbd_map_normal;
+    const char* kbd_map_shifted;
+} keyboard_t;
+
+static const char kbd_map_normal[] = {
+    0,   27,  '1', '2', '3',  '4', '5', '6',  '7', '8', '9',  '0', '-', '=', '\b', '\t', 'q', 'w',
+    'e', 'r', 't', 'y', 'u',  'i', 'o', 'p',  '[', ']', '\n', 0,   'a', 's', 'd',  'f',  'g', 'h',
+    'j', 'k', 'l', ';', '\'', '`', 0,   '\\', 'z', 'x', 'c',  'v', 'b', 'n', 'm',  ',',  '.', '/',
+    0,   '*', 0,   ' ', 0,    0,   0,   0,    0,   0,   0,    0,   0,   0,   0,    0,    0,   0,
+    0,   0,   '-', 0,   0,    0,   '+', 0,    0,   0,   0,    0,   0,   0,   0,    0,    0,   0,
+};
+
+static const char kbd_map_shifted[] = {
+    0,    27,  '!', '@', '#', '$', '%', '^', '&',  '*', '(', ')', '_', '+', '\b', '\t', 'Q', 'W', 'E', 'R',
+    'T',  'Y', 'U', 'I', 'O', 'P', '{', '}', '\n', 0,   'A', 'S', 'D', 'F', 'G',  'H',  'J', 'K', 'L', ':',
+    '\"', '~', 0,   '|', 'Z', 'X', 'C', 'V', 'B',  'N', 'M', '<', '>', '?', 0,    '*',  0,   ' ',
+};
+
+keyboard_t keyboard;
 
 const char* key_to_char(unsigned char key) {
     switch (key) {
-        case 0x2A:
-        case 0x36:
+        case KEY_LSHIFT:
+        case KEY_RSHIFT:
             shift_pressed = 1;
             return "";
-        case 0xAA:
-        case 0xB6:
+        case KEY_LSHIFT_RELEASE:
+        case KEY_RSHIFT_RELEASE:
             shift_pressed = 0;
             return "";
-        case 0x1D:
+        case KEY_CTRL:
             ctrl_pressed = 1;
             return "";
-        case 0x9D:
+        case KEY_CTRL_RELEASE:
             ctrl_pressed = 0;
             return "";
-        case 0x38:
+        case KEY_ALT:
             alt_pressed = 1;
             return "";
-        case 0xB8:
+        case KEY_ALT_RELEASE:
             alt_pressed = 0;
             return "";
     }
 
-    if (key >= 0x02 && key <= 0x39) {
-        const char* c = "";
-        switch (key) {
-            case 0x02:
-                c = shift_pressed ? "!" : "1";
-                break;
-            case 0x03:
-                c = shift_pressed ? "@" : "2";
-                break;
-            case 0x04:
-                c = shift_pressed ? "#" : "3";
-                break;
-            case 0x05:
-                c = shift_pressed ? "$" : "4";
-                break;
-            case 0x06:
-                c = shift_pressed ? "%" : "5";
-                break;
-            case 0x07:
-                c = shift_pressed ? "^" : "6";
-                break;
-            case 0x08:
-                c = shift_pressed ? "&" : "7";
-                break;
-            case 0x09:
-                c = shift_pressed ? "*" : "8";
-                break;
-            case 0x0A:
-                c = shift_pressed ? "(" : "9";
-                break;
-            case 0x0B:
-                c = shift_pressed ? ")" : "0";
-                break;
-            case 0x0C:
-                c = shift_pressed ? "_" : "-";
-                break;
-            case 0x0D:
-                c = shift_pressed ? "+" : "=";
-                break;
-
-            case 0x10:
-                c = shift_pressed ? "Q" : "q";
-                break;
-            case 0x11:
-                c = shift_pressed ? "W" : "w";
-                break;
-            case 0x12:
-                c = shift_pressed ? "E" : "e";
-                break;
-            case 0x13:
-                c = shift_pressed ? "R" : "r";
-                break;
-            case 0x14:
-                c = shift_pressed ? "T" : "t";
-                break;
-            case 0x15:
-                c = shift_pressed ? "Y" : "y";
-                break;
-            case 0x16:
-                c = shift_pressed ? "U" : "u";
-                break;
-            case 0x17:
-                c = shift_pressed ? "I" : "i";
-                break;
-            case 0x18:
-                c = shift_pressed ? "O" : "o";
-                break;
-            case 0x19:
-                c = shift_pressed ? "P" : "p";
-                break;
-            case 0x1E:
-                c = shift_pressed ? "A" : "a";
-                break;
-            case 0x1F:
-                c = shift_pressed ? "S" : "s";
-                break;
-            case 0x20:
-                c = shift_pressed ? "D" : "d";
-                break;
-            case 0x21:
-                c = shift_pressed ? "F" : "f";
-                break;
-            case 0x22:
-                c = shift_pressed ? "G" : "g";
-                break;
-            case 0x23:
-                c = shift_pressed ? "H" : "h";
-                break;
-            case 0x24:
-                c = shift_pressed ? "J" : "j";
-                break;
-            case 0x25:
-                c = shift_pressed ? "K" : "k";
-                break;
-            case 0x26:
-                c = shift_pressed ? "L" : "l";
-                break;
-            case 0x2C:
-                c = shift_pressed ? "Z" : "z";
-                break;
-            case 0x2D:
-                c = shift_pressed ? "X" : "x";
-                break;
-            case 0x2E:
-                c = shift_pressed ? "C" : "c";
-                break;
-            case 0x2F:
-                c = shift_pressed ? "V" : "v";
-                break;
-            case 0x30:
-                c = shift_pressed ? "B" : "b";
-                break;
-            case 0x31:
-                c = shift_pressed ? "N" : "n";
-                break;
-            case 0x32:
-                c = shift_pressed ? "M" : "m";
-                break;
-
-            case 0x39:
-                c = " ";
-                break;
-            case 0x0E:
-                c = "\b";
-                break;
-            case 0x1C:
-                c = "\n";
-                break;
-        }
-        return c;
+    // 2. Handle Named/Special Keys
+    switch (key) {
+        case KEY_ESC:
+            return "Esc";
+        case KEY_F1:
+            return "F1";
+        case KEY_F2:
+            return "F2";
+        case KEY_F3:
+            return "F3";
+        case KEY_F4:
+            return "F4";
+        case KEY_F5:
+            return "F5";
+        case KEY_F6:
+            return "F6";
+        case KEY_F7:
+            return "F7";
+        case KEY_F8:
+            return "F8";
+        case KEY_F9:
+            return "F9";
+        case KEY_F10:
+            return "F10";
+        case KEY_F11:
+            return "F11";
+        case KEY_F12:
+            return "F12";
+        case KEY_ARROW_UP:
+            return "ArrowUp";
+        case KEY_ARROW_LEFT:
+            return "ArrowLeft";
+        case KEY_ARROW_RIGHT:
+            return "ArrowRight";
+        case KEY_ARROW_DOWN:
+            return "ArrowDown";
+        case KEY_DELETE:
+            return "Delete";
     }
 
-    switch (key) {
-        case 0x01:
-            return "Esc";
-        case 0x3B:
-            return "F1";
-        case 0x3C:
-            return "F2";
-        case 0x3D:
-            return "F3";
-        case 0x3E:
-            return "F4";
-        case 0x3F:
-            return "F5";
-        case 0x40:
-            return "F6";
-        case 0x41:
-            return "F7";
-        case 0x42:
-            return "F8";
-        case 0x43:
-            return "F9";
-        case 0x44:
-            return "F10";
-        case 0x57:
-            return "F11";
-        case 0x58:
-            return "F12";
-        case 0x0F:
-            return "Tab";
-        case 0x35:
-            return "Insert";
-        case 0x49:
-            return "Home";
-        case 0x4B:
-            return "PageUp";
-        case 0x4D:
-            return "Delete";
-        case 0x4F:
-            return "End";
-        case 0x51:
-            return "PageDown";
-        case 0x52:
-            return "ArrowUp";
-        case 0x53:
-            return "ArrowLeft";
-        case 0x54:
-            return "ArrowRight";
-        case 0x55:
-            return "ArrowDown";
+    if (key < sizeof(kbd_map_normal)) {
+        static char buf[2] = {0, 0};
+        char c = shift_pressed ? kbd_map_shifted[key] : kbd_map_normal[key];
+
+        if (c != 0) {
+            buf[0] = c;
+            return buf;
+        }
     }
 
     return "";
@@ -251,36 +143,22 @@ char try_get_char(void) {
     return 0;
 }
 
-void keyboard_task(void* arg) {
-    static int pos = 0;
-    char c = try_get_char();
+void keyboard_handler() {
+    unsigned char scancode = inb(0x60);
+    const char* str = key_to_char(scancode);
 
-    if (c == 0) {
+    if (str[0] == '\0') {
         return;
     }
-
-    if (c == '\b' && pos > 0) {
-        pos--;
-        vga_index--;
-        echo(" ", BLACK);
-        vga_index--;
-        uint16_t x = vga_index % VGA_WIDTH;
-        uint16_t y = vga_index / VGA_WIDTH;
-        vga_set_foreground_color(WHITE, vga_index / VGA_WIDTH, WHITE);
-        vga_set_cursor_position(x, y);
-
-    } else if (c == '\n') {
-        echo("\n", WHITE);
-        command_ready = 1;
-        pos = 0;
-        vga_set_foreground_color(WHITE, vga_index / VGA_WIDTH, WHITE);
-        vga_set_cursor_position(0, (vga_index / VGA_WIDTH));
-
-    } else if (c >= 32 && c <= 126 && pos < 40 - 1) {
-        put_char(c, WHITE);
-        uint16_t x = vga_index % VGA_WIDTH;
-        uint16_t y = vga_index / VGA_WIDTH;
-        vga_set_foreground_color(WHITE, vga_index / VGA_WIDTH, WHITE);
-        vga_set_cursor_position(x, y);
+    if (str[0] == '\b') {
+        echo("\b", BLACK);
+    } else {
+        echo((char*) str, WHITE);
     }
+}
+
+void keyboard_init() {
+    keyboard.layout = QWERTY;
+    keyboard.kbd_map_normal = kbd_map_normal;
+    keyboard.kbd_map_shifted = kbd_map_shifted;
 }

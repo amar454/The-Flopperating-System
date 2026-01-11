@@ -12,6 +12,18 @@ typedef struct {
     uint16_t base_high;
 } __attribute__((packed)) idt_entry_t;
 
+#define SYSCALL_ISR_DISPATCH(frame)                                                                                    \
+    do {                                                                                                               \
+        uint32_t _num = (frame)->eax;                                                                                  \
+        uint32_t _a1 = (frame)->ebx;                                                                                   \
+        uint32_t _a2 = (frame)->ecx;                                                                                   \
+        uint32_t _a3 = (frame)->edx;                                                                                   \
+        uint32_t _a4 = (frame)->esi;                                                                                   \
+        uint32_t _a5 = (frame)->edi;                                                                                   \
+        int _ret = c_syscall_routine(_num, _a1, _a2, _a3, _a4, _a5);                                                   \
+        (frame)->eax = (uint32_t) _ret;                                                                                \
+    } while (0)
+
 typedef struct {
     uint16_t limit;
     uint32_t base;
@@ -59,7 +71,7 @@ void interrupts_init(void);
 
 #define IA32_CPU_RELAX() __asm__ volatile("pause" : : : "memory")
 
-// this is dogshit
+// this is dogshit (but the only way to do it)
 // :^)
 #define IA32_INT_ENABLED()                                                                                             \
     ({                                                                                                                 \

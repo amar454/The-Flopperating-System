@@ -2,19 +2,20 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 #include "../task/sched.h"
 #include "../drivers/io/io.h"
 #include "../drivers/ata/ata.h"
 #include "../drivers/vga/vgahandler.h"
+#include "../drivers/vga/framebuffer.h"
 #include "../lib/logging.h"
 #include <stdint.h>
 #include <stdbool.h>
@@ -28,10 +29,11 @@ You should have received a copy of the GNU General Public License along with Flo
 #include "../mem/utils.h"
 #include "../kernel/kernel.h"
 #include "../multiboot/multiboot.h"
+extern void framebuffer_term_init();
 
 void init_early(multiboot_info_t* mb_info) {
     framebuffer_init(mb_info);
-    init_console();
+    framebuffer_term_init();
     log("floppaOS kernel framebuffer: init - ok\n", GREEN);
     log("floppaOS - The Floperrating system, a free and open-source 32-bit hobby operating system\n", YELLOW);
     sleep_seconds(1);

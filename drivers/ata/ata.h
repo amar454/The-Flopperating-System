@@ -24,8 +24,10 @@ typedef enum ata_cmd {
     ATA_CMD_IDENT = 0xEC
 } ata_cmd_t;
 
+#define ATA_ERR 0x01
 #define ATA_BSY 0x80
 #define ATA_DRQ 0x08
+#define ATA_RDY 0x40
 #define MAX_SECTORS 256
 #define ATA_SECTOR_SIZE 512
 #define SECTOR_ITERATE for (uint8_t i = 0; i < sectors; i++)
@@ -103,7 +105,7 @@ typedef struct {
     ata_request_t* head;
     ata_request_t* tail;
     size_t length;
-    mutex_t lock;
+    spinlock_t lock;
 } ata_queue_t;
 
 extern ata_queue_t ata_queue;

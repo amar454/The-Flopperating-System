@@ -1,52 +1,37 @@
-#ifndef TMPFS_H
-#define TMPFS_H
+#ifndef TMPFLOPFS_H
+#define TMPFLOPFS_H
 
-#include "../vfs/vfs.h"
-#include "../../lib/refcount.h"
 #include <stddef.h>
 #include <stdint.h>
-#include "../../task/sync/spinlock.h"
-typedef struct tmpfs_inode tmpfs_inode_t;
-typedef struct tmpfs_super tmpfs_super_t;
-typedef struct tmpfs_handle tmpfs_handle_t;
+#include "../vfs/vfs.h"
 
-typedef struct tmpfs_dirent {
-    tmpfs_inode_t* child;
-    struct tmpfs_dirent* next;
-} tmpfs_dirent_t;
+typedef enum tmpfs_node_type {
+    TMPFS_NODE_FILE = VFS_FILE,
+    TMPFS_NODE_DIR = VFS_DIR,
+    TMPFS_NODE_DEV = VFS_DEV,
+    TMPFS_NODE_SYMLINK = VFS_SYMLINK,
+    TMPFS_NODE_PIPE = VFS_PIPE
+} tmpfs_node_type_t;
 
-struct tmpfs_inode {
+struct tmpfs_node {
     char name[VFS_MAX_FILE_NAME];
-    int type;
-    tmpfs_inode_t* parent;
-    tmpfs_dirent_t* children;
-    refcount_t refcount;
-    void** pages; /* array of page pointers */
-    size_t page_count;
-    size_t size;
-    spinlock_t lock;
+    tmpfs_node_type_t type;
+    uint32_t mode;
+    uint32_t uid;
+    uint32_t gid;
+    uint64_t size;
+    uint64_t offset;
+    uint32_t nlink;
+    uint32_t ino;
+
+    void** pages;
+    uint32_t page_count;
+
+    struct tmpfs_node* parent;
+    struct tmpfs_node* children;
+    struct tmpfs_node* next_sibling;
 };
 
-struct tmpfs_super {
-    tmpfs_inode_t* root;
-    refcount_t refcount;
-    spinlock_t lock;
-};
+void tmpfs_init(void);
 
-typedef enum {
-    TMPFS_CMD_GET_SIZE = 1,
-    TMPFS_CMD_SET_SIZE,
-    TMPFS_CMD_TRUNCATE,
-    TMPFS_CMD_SYNC,
-} tmpfs_ctrl_cmd_t;
-
-struct tmpfs_handle {
-    tmpfs_inode_t* inode;
-    size_t pos;
-    int mode;
-};
-
-int tmpfs_register_with_vfs();
-int tmpfs_init(void);
-
-#endif // TMPFS_H
+#endif

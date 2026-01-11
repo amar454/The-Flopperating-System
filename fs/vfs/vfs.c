@@ -2,13 +2,13 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 #include "vfs.h"
@@ -24,15 +24,6 @@ You should have received a copy of the GNU General Public License along with Flo
 #include <stddef.h>
 #include <stdint.h>
 
-struct vfs_fs_list {
-    struct vfs_fs* head;
-};
-
-struct vfs_mp_list {
-    struct vfs_mountpoint* head;
-    struct vfs_mountpoint* tail;
-    spinlock_t lock;
-};
 struct vfs_fs_list fs_list = {.head = NULL};
 
 struct vfs_mp_list mp_list = {.head = NULL, .tail = NULL, .lock = SPINLOCK_INIT};

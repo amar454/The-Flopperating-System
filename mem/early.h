@@ -22,6 +22,17 @@ struct early_info {
     bool initialized;
 };
 
+typedef struct early_chunk {
+    size_t size;
+    bool free;
+    struct early_chunk* next;
+    struct early_chunk* prev;
+} early_chunk_t;
+
+#define CHUNK_HEADER_SIZE (sizeof(early_chunk_t))
+
+static early_chunk_t* early_head = NULL;
+
 void early_allocator_init(void);
 void* early_alloc(size_t size);
 void early_free(void* ptr);

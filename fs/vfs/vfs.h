@@ -15,21 +15,27 @@
 #define VFS_HIDDEN 0x4
 #define VFS_PIPE 0x5
 
-#define VFS_MODE_R 0x1
-#define VFS_MODE_W 0x2
-#define VFS_MODE_RW (VFS_MODE_R | VFS_MODE_W)
-#define VFS_MODE_CREATE 0x4
-#define VFS_MODE_TRUNCATE 0x8
-#define VFS_MODE_APPEND 0x9
+typedef enum vfs_mode {
+    VFS_MODE_R = 0x1,
+    VFS_MODE_W = 0x2,
+    VFS_MODE_RW = (VFS_MODE_R | VFS_MODE_W),
+    VFS_MODE_CREATE = 0x4,
+    VFS_MODE_TRUNCATE = 0x8,
+    VFS_MODE_APPEND = 0x9
+} vfs_mode_t;
 
-#define VFS_SEEK_STRT 0x0
-#define VFS_SEEK_CUR 0x1
-#define VFS_SEEK_END 0x2
+typedef enum vfs_seek {
+    VFS_SEEK_STRT = 0x0,
+    VFS_SEEK_CUR = 0x1,
+    VFS_SEEK_END = 0x2
+} vfs_seek_t;
 
-#define VFS_TYPE_TMPFS 0x1
-#define VFS_TYPE_FAT 0x2
-#define VFS_TYPE_DEVFS 0x3
-#define VFS_TYPE_PROCFS 0x4
+typedef enum vfs_fs_type {
+    VFS_FS_TMPFS = 0x1,
+    VFS_FS_FAT = 0x2,
+    VFS_FS_DEVFS = 0x3,
+    VFS_FS_PROCFS = 0x4
+} vfs_fs_type_t;
 
 struct vfs_mountpoint {
     struct vfs_fs* filesystem;
@@ -41,7 +47,7 @@ struct vfs_mountpoint {
 };
 
 struct vfs_directory_entry {
-    char name[256];
+    char name[VFS_MAX_FILE_NAME];
     int type;
     struct vfs_directory_entry* next;
 };
@@ -64,11 +70,21 @@ typedef struct stat {
     uint32_t st_dev;
 } stat_t;
 
+struct vfs_fs_list {
+    struct vfs_fs* head;
+};
+
+struct vfs_mp_list {
+    struct vfs_mountpoint* head;
+    struct vfs_mountpoint* tail;
+    spinlock_t lock;
+};
+
 struct vfs_node {
     pipe_t pipe;
     struct vfs_mountpoint* mountpoint;
     void* data_pointer;
-    int vfs_mode;
+    vfs_mode_t vfs_mode;
     refcount_t refcount;
     stat_t stat;
     struct vfs_op_tbl* ops;
@@ -109,8 +125,10 @@ struct vfs_op_tbl {
 
 struct vfs_fs {
     struct vfs_op_tbl op_table;
-    int filesystem_type;
+    vfs_fs_type_t filesystem_type;
     struct vfs_fs* previous;
+    char* name;
+    char* mount_point;
 };
 
 int vfs_init(void);

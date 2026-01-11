@@ -2,13 +2,13 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 #include <stdint.h>
@@ -18,18 +18,21 @@ You should have received a copy of the GNU General Public License along with Flo
 #include "../../lib/logging.h"
 #include "ata.h"
 #include "../../interrupts/interrupts.h"
+
 extern thread_t* current_thread;
 
 ata_queue_t ata_queue;
+static spinlock_t ata_lock = SPINLOCK_INIT;
 
-static void ata_bsy_wait(void) {
-    while (ATA_PORT_BUSY) {
+static void ata_bs_wait(void) {
+    // wait for bsy to clear and rdy to be set
+    while ((inb(ATA_PORT_STATUS) & ATA_BSY) || !(inb(ATA_PORT_STATUS) & ATA_RDY)) {
         IA32_CPU_RELAX();
     }
 }
 
 static void ata_drq_wait(void) {
-    while (ATA_PORT_DRQ) {
+    while (!(inb(ATA_PORT_STATUS) & ATA_DRQ)) {
         IA32_CPU_RELAX();
     }
 }
@@ -63,7 +66,7 @@ void ata_queue_init(void) {
     ata_queue.head = NULL;
     ata_queue.tail = NULL;
     ata_queue.length = 0;
-    mutex_init(&ata_queue.lock, "ata_queue_lock");
+    spinlock_init(&ata_queue.lock);
 }
 
 // read sectors into buffer
@@ -80,7 +83,7 @@ void ata_read(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer, boo
     // iterate through sectors
     SECTOR_ITERATE {
         // wait for drive to be ready
-        ata_bsy_wait();
+        ata_bs_wait();
         CATCH_DRIVE_ERR;
 
         // wait for data req
@@ -108,7 +111,7 @@ void ata_write(uint8_t drive, uint32_t lba, uint8_t sectors, uint8_t* buffer, bo
     // iterate through sectors
     SECTOR_ITERATE {
         // wait for drive to be ready
-        ata_bsy_wait();
+        ata_bs_wait();
         CATCH_DRIVE_ERR;
 
         // wait for data req
@@ -161,6 +164,10 @@ static void ata_queue_enqueue_unlocked(ata_request_t* req) {
 
 // prepare a request
 void ata_start_request(ata_request_t* req) {
+    if (!req) {
+        return;
+    }
+
     switch (req->type) {
         case ATA_REQ_READ:
             ATA_PREPARE_OP(req->drive, req->lba, req->sector_count, ATA_CMD_READ);
@@ -186,7 +193,7 @@ int ata_finish_request(ata_request_t* req) {
         uint16_t tmp[256];
         ID_WORD_ITERATE {
             // read id words
-            tmp[i] = inw(ATA_PORT_BASE);
+            tmp[i] = inw(ATA_PORT_DATA); // Note: Usually DATA port, check your macros
         }
         return 0;
     }
@@ -207,48 +214,47 @@ int ata_finish_request(ata_request_t* req) {
 }
 
 void ata_submit(ata_request_t* req) {
-    mutex_lock(&ata_queue.lock, current_thread);
+    spinlock(&ata_lock);
 
+    bool was_empty = (ata_queue.head == NULL);
     ata_queue_enqueue_unlocked(req);
 
-    if (ata_queue.length == 1) {
+    if (was_empty) {
         // if queue empty, start req
         ata_start_request(req);
     }
 
-    mutex_unlock(&ata_queue.lock);
+    spinlock_unlock(&ata_lock, true);
 }
 
 void ata_irq_handler(void) {
-    // try to grab the mutex without blocking
-    int expected = MUTEX_UNLOCKED;
+    // acknowledge the irq immediately by reading the status register
+    uint8_t status = inb(ATA_PORT_STATUS);
 
-    if (!atomic_compare_exchange_strong(&ata_queue.lock.state, &expected, MUTEX_LOCKED)) {
-        // someone else owns the queue
-        return;
-    }
+    spinlock(&ata_lock);
 
-    ata_queue.lock.owner = current_thread;
-
-    // get next request from queue
-    ata_request_t* req = ata_queue_dequeue_unlocked();
+    // get current request from queue
+    ata_request_t* req = ata_queue.head;
 
     if (req) {
         // do pio
         int st = ata_finish_request(req);
+
+        ata_queue_dequeue_unlocked();
+
         if (req->completion) {
             // call completion callback
             req->completion(req, st);
         }
 
+        // start next request if the queue isn't empty
         ata_request_t* next = ata_queue.head;
         if (next) {
-            // start next request if applicable
             ata_start_request(next);
         }
     }
 
-    mutex_unlock(&ata_queue.lock);
+    spinlock_unlock(&ata_lock, true);
 }
 
 // detect drives, initialize them, and start the first request
@@ -257,10 +263,14 @@ void ata_init(void) {
     ata_queue_init();
 
     for (uint8_t drive = 0; drive < 2; drive++) {
+        // check for floating bus (no controller/drives)
+        if (inb(ATA_PORT_STATUS) == 0xFF) {
+            continue;
+        }
+
         ATA_DRIVE_INIT_PREPARE(drive);
 
         int timeout = 100000;
-
         while (--timeout && (inb(ATA_PORT_STATUS) & ATA_BSY)) {
             IA32_CPU_RELAX();
         }
@@ -273,16 +283,23 @@ void ata_init(void) {
 
         // attempt to IDENTIFY using a temporary request
         ata_request_t identify_req;
-        ATTEMPT_IDENTITY_REQUEST;
+        identify_req.drive = drive;
+        identify_req.type = ATA_REQ_IDENTIFY;
+
+        ATA_IDENTIFY_DRIVE(drive);
 
         // timeout for identify finish
         timeout = 100000;
         while (--timeout && !(inb(ATA_PORT_STATUS) & ATA_DRQ)) {
+            // Check if drive dropped an error
+            if (inb(ATA_PORT_STATUS) & ATA_ERR) {
+                break;
+            }
             IA32_CPU_RELAX();
         }
 
-        if (timeout == 0) {
-            log_uint("ata: identify timeout for drive ", drive);
+        if (timeout == 0 || (inb(ATA_PORT_STATUS) & ATA_ERR)) {
+            log_uint("ata: identify failed/timeout for drive ", drive);
             continue; // skip this drive
         }
 

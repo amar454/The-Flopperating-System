@@ -1,3 +1,16 @@
+/*
+
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
+
+This file is part of The Flopperating System.
+
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
+
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
+
+*/
 #include "framebuffer.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -48,83 +61,49 @@ void init_colors() {
 }
 
 void framebuffer_set_pixel_buffer(int x, int y, uint32_t color) {
-    if (x < 0 || (uint32_t) x >= _fb_instance.width || y < 0 || (uint32_t) y >= _fb_instance.height) {
+    if (x < 0 || y < 0 || (uint32_t) x >= _fb_instance.width || (uint32_t) y >= _fb_instance.height) {
         return;
     }
 
-    uint8_t* _dest_fb = _fb_instance.screen;
+    uint8_t* fb = _fb_instance.screen;
+
     switch (_fb_instance.bpp) {
-        case 8: {
-            uint8_t* pixel = _dest_fb + _fb_instance.pitch * y + x;
-            *pixel = color & 0xFF;
+        case 8:
+            FB_PUT_PIXEL_8(fb, x, y, color);
             break;
-        }
-        case 15: {
-            uint16_t* pixel = (uint16_t*) (_dest_fb + _fb_instance.pitch * y + 2 * x);
-            uint16_t r = (color >> 16) & 0x1F;
-            uint16_t g = (color >> 8) & 0x1F;
-            uint16_t b = color & 0x1F;
-            *pixel = (r << 10) | (g << 5) | b;
+        case 15:
+            FB_PUT_PIXEL_15(fb, x, y, color);
             break;
-        }
-        case 16: {
-            uint16_t* pixel = (uint16_t*) (_dest_fb + _fb_instance.pitch * y + 2 * x);
-            uint16_t r = (color >> 16) & 0x1F;
-            uint16_t g = (color >> 8) & 0x3F;
-            uint16_t b = color & 0x1F;
-            *pixel = (r << 11) | (g << 5) | b;
+        case 16:
+            FB_PUT_PIXEL_16(fb, x, y, color);
             break;
-        }
-        case 24: {
-            uint8_t* pixel = _dest_fb + _fb_instance.pitch * y + 3 * x;
-            pixel[0] = (color >> 0) & 0xFF;  // Blue
-            pixel[1] = (color >> 8) & 0xFF;  // Green
-            pixel[2] = (color >> 16) & 0xFF; // Red
+        case 24:
+            FB_PUT_PIXEL_24(fb, x, y, color);
             break;
-        }
-        case 32: {
-            uint32_t* pixel = (uint32_t*) (_dest_fb + _fb_instance.pitch * y + 4 * x);
-            *pixel = color;
+        case 32:
+            FB_PUT_PIXEL_32(fb, x, y, color);
             break;
-        }
     }
 }
 
 uint32_t framebuffer_get_pixel_buffer(int x, int y) {
-    if (x < 0 || (uint32_t) x >= _fb_instance.width || y < 0 || (uint32_t) y >= _fb_instance.height) {
+    if (x < 0 || y < 0 || (uint32_t) x >= _fb_instance.width || (uint32_t) y >= _fb_instance.height) {
         return 0;
     }
 
     uint8_t* fb = _fb_instance.screen;
+
     switch (_fb_instance.bpp) {
-        case 8: {
-            uint8_t* pixel = fb + _fb_instance.pitch * y + x;
-            return *pixel;
-        }
-        case 15: {
-            uint16_t* pixel = (uint16_t*) (fb + _fb_instance.pitch * y + 2 * x);
-            uint16_t value = *pixel;
-            uint32_t r = (value >> 10) & 0x1F;
-            uint32_t g = (value >> 5) & 0x1F;
-            uint32_t b = value & 0x1F;
-            return (r << 16) | (g << 8) | b;
-        }
-        case 16: {
-            uint16_t* pixel = (uint16_t*) (fb + _fb_instance.pitch * y + 2 * x);
-            uint16_t value = *pixel;
-            uint32_t r = (value >> 11) & 0x1F;
-            uint32_t g = (value >> 5) & 0x3F;
-            uint32_t b = value & 0x1F;
-            return (r << 16) | (g << 8) | b;
-        }
-        case 24: {
-            uint8_t* pixel = fb + _fb_instance.pitch * y + 3 * x;
-            return pixel[0] | (pixel[1] << 8) | (pixel[2] << 16);
-        }
-        case 32: {
-            uint32_t* pixel = (uint32_t*) (fb + _fb_instance.pitch * y + 4 * x);
-            return *pixel;
-        }
+        case 8:
+            return FB_GET_PIXEL_8(fb, x, y);
+        case 15:
+            return FB_GET_PIXEL_15(fb, x, y);
+        case 16:
+            return FB_GET_PIXEL_16(fb, x, y);
+        case 24:
+            return FB_GET_PIXEL_24(fb, x, y);
+        case 32:
+            return FB_GET_PIXEL_32(fb, x, y);
         default:
             return 0;
     }
@@ -270,7 +249,7 @@ void framebuffer_test_pattern() {
 
 struct flanterm_context* ft_ctx;
 
-void init_console() {
+void framebuffer_term_init() {
     ft_ctx = flanterm_fb_init(NULL,
                               NULL,
                               _fb_instance.screen,
@@ -299,6 +278,6 @@ void init_console() {
                               0);
 }
 
-void console_write(const char* str) {
+void framebuffer_term_write(const char* str) {
     flanterm_write(ft_ctx, str, flopstrlen(str));
 }

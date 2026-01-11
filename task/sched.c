@@ -2,13 +2,13 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 
@@ -43,6 +43,7 @@ sched_internal_init_thread(void (*entry)(void), unsigned int priority, char* nam
 
 extern void context_switch(cpu_ctx_t* old, cpu_ctx_t* new);
 extern void usermode_entry_routine(uint32_t stack, uint32_t ip);
+
 scheduler_t sched = {
     .kernel_threads = {.head = NULL, .tail = NULL, .count = 0, .name = "kernel_threads", .lock = SPINLOCK_INIT},
     .user_threads = {.head = NULL, .tail = NULL, .count = 0, .name = "user_threads", .lock = SPINLOCK_INIT},
@@ -52,6 +53,7 @@ scheduler_t sched = {
     .idle_thread = NULL,
     .stealer_thread = NULL,
 };
+
 #define USER_STACK_TOP 0xC0000000
 #define USER_STACK_SIZE 0x1000
 

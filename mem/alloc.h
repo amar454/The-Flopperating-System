@@ -26,7 +26,6 @@ typedef struct {
 } box_hash_entry_t;
 
 static box_hash_entry_t box_hash[BOX_HASH_SIZE];
-static uint32_t next_box_id = 1;
 
 typedef struct {
     box_t* box;
@@ -41,6 +40,7 @@ typedef struct guarded_object {
 #define BLOCK_SIZE 32
 #define OBJECT_ALIGN sizeof(void*)
 #define BLOCKS_PER_BOX ((PAGE_SIZE - sizeof(box_t)) / (BLOCK_SIZE + 1))
+#define BOX_LOOKUP for (box_t* b = boxes; b; b = b->next)
 
 void* kmalloc(size_t size);
 void kfree(void* ptr, size_t size);

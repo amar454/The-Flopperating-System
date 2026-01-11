@@ -104,7 +104,7 @@ void echo(const char* str, unsigned char color) {
     char buf[8192];
     int len = flopsnprintf(buf, sizeof(buf), "\x1b[38;5;%um%s\x1b[0m", ansi_color, str);
     if (len > 0 && len < (int) sizeof(buf)) {
-        console_write(buf);
+        framebuffer_term_write(buf);
     }
 }
 

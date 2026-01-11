@@ -2,33 +2,43 @@
 #define KEYBOARD_H
 #include <stdbool.h>
 
-// Arrow keys
-#define ARROW_UP             0x48
-#define ARROW_DOWN           0x50
-#define ARROW_LEFT           0x4B
-#define ARROW_RIGHT          0x4D
+typedef enum scancodes {
+    KEY_ESC = 0x01,
+    KEY_CTRL = 0x1D,
+    KEY_CTRL_RELEASE = 0x9D,
+    KEY_ALT = 0x38,
+    KEY_ALT_RELEASE = 0xB8,
+    KEY_LSHIFT = 0x2A,
+    KEY_RSHIFT = 0x36,
+    KEY_LSHIFT_RELEASE = 0xAA,
+    KEY_RSHIFT_RELEASE = 0xB6,
 
-// Modifier keys
-#define KEY_SHIFT_PRESS      0x2A
-#define KEY_SHIFT_RELEASE    0xAA
-#define KEY_CTRL_PRESS       0x1D
-#define KEY_CTRL_RELEASE     0x9D
-#define KEY_ALT_PRESS        0x38
-#define KEY_ALT_RELEASE      0xB8
+    KEY_F1 = 0x3B,
+    KEY_F2 = 0x3C,
+    KEY_F3 = 0x3D,
+    KEY_F4 = 0x3E,
+    KEY_F5 = 0x3F,
+    KEY_F6 = 0x40,
+    KEY_F7 = 0x41,
+    KEY_F8 = 0x42,
+    KEY_F9 = 0x43,
+    KEY_F10 = 0x44,
+    KEY_F11 = 0x57,
+    KEY_F12 = 0x58,
 
-// Special keys
-#define KEY_BACKSPACE        0x0E
-#define KEY_ENTER            0x1C
-#define KEY_SPACE            0x39
+    KEY_ARROW_UP = 0x52,
+    KEY_ARROW_DOWN = 0x55,
+    KEY_ARROW_LEFT = 0x53,
+    KEY_ARROW_RIGHT = 0x54,
+    KEY_DELETE = 0x4D,
+    KEY_HOME = 0x49,
+    KEY_END = 0x4F,
+    KEY_PAGE_UP = 0x4B,
+    KEY_PAGE_DOWN = 0x51
+} scancodes_t;
 
-// Extended key prefix
-#define KEY_EXTENDED         0xE0
-
-// Converts a keyboard scan code to an ASCII character
-void keyboard_task(void *arg);
-const char *key_to_char(unsigned char key);
-
-// Reads a key scan code from the keyboard
+void keyboard_handler();
+const char* key_to_char(unsigned char key);
 unsigned char try_read_key(void);
 char get_char(void);
 char try_get_char(void);

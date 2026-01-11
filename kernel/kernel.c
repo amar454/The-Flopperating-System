@@ -238,7 +238,3 @@ int kmain(uint32_t magic, multiboot_info_t* mb_info) {
     }
     return 0;
 }
-
-int main() {
-    return 0;
-}

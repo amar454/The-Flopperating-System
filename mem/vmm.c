@@ -2,28 +2,26 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 #include <stdint.h>
 #include "pmm.h"
 #include "vmm.h"
+#include "alloc.h"
 #include "paging.h"
 #include "utils.h"
-#include "../cpu/cpu.h"
 #include "../lib/logging.h"
 
 extern uint32_t* pg_dir;
 extern uint32_t* pg_tbls;
 extern uint32_t* current_pg_dir;
-
-static vmm_region_t* region_list = 0;
 vmm_region_t kernel_region;
 static vmm_region_t* current_region = NULL;
 
@@ -125,21 +123,27 @@ uintptr_t vmm_resolve(vmm_region_t* region, uintptr_t va) {
     return (pt[pti] & PAGE_MASK) | (va & ~PAGE_MASK);
 }
 
-void region_insert(vmm_region_t* region) {
+static spinlock_t region_list_lock = SPINLOCK_INIT;
+static vmm_region_t* region_list = NULL;
+
+void vmm_region_insert(vmm_region_t* region) {
+    bool r = spinlock(&region_list_lock);
     region->next = region_list;
     region_list = region;
+    spinlock_unlock(&region_list_lock, r);
 }
 
-void region_remove(vmm_region_t* region) {
+void vmm_region_remove(vmm_region_t* region) {
+    bool r = spinlock(&region_list_lock);
     vmm_region_t** iter = &region_list;
     while (*iter) {
         if (*iter == region) {
             *iter = region->next;
             break;
-        } else {
-            iter = &(*iter)->next;
         }
+        iter = &(*iter)->next;
     }
+    spinlock_unlock(&region_list_lock, r);
 }
 
 // create a new region descriptor
@@ -170,12 +174,12 @@ vmm_region_t* vmm_region_create(size_t initial_pages, uint32_t flags, uintptr_t*
     region->base_va = USER_SPACE_START;
     region->next_free_va = region->base_va;
 
-    region_insert(region);
+    vmm_region_insert(region);
 
     if ((initial_pages > 0) && out_va) {
         uintptr_t va = vmm_alloc(region, initial_pages, flags);
         if (va == (uintptr_t) (-1)) {
-            region_remove(region);
+            vmm_region_remove(region);
             kfree(region, sizeof(vmm_region_t));
             pmm_free_page((void*) dir_phys);
             return NULL;
@@ -192,7 +196,7 @@ void vmm_region_destroy(vmm_region_t* region) {
     if (!region) {
         return;
     }
-    region_remove(region);
+    vmm_region_remove(region);
     if (region->random_table) {
         kfree(region->random_table, region->random_capacity * sizeof(aslr_entry_t));
         region->random_table = NULL;
@@ -218,7 +222,7 @@ void vmm_init() {
     kernel_region.next = 0;
     current_pg_dir = pg_dir;
     pg_dir[RECURSIVE_PDE] = ((uintptr_t) pg_dir & PAGE_MASK) | PAGE_PRESENT | PAGE_RW;
-    region_insert(&kernel_region);
+    vmm_region_insert(&kernel_region);
     log("vmm: init - ok\n", GREEN);
 }
 
@@ -285,7 +289,7 @@ vmm_region_t* vmm_copy_pagemap(vmm_region_t* src) {
     }
 
     new_dir[RECURSIVE_PDE] = ((uintptr_t) new_dir & PAGE_MASK) | PAGE_PRESENT | PAGE_RW;
-    region_insert(dst);
+    vmm_region_insert(dst);
     return dst;
 }
 
@@ -309,7 +313,7 @@ void vmm_nuke_pagemap(vmm_region_t* region) {
     }
     uintptr_t dir_phys = (uintptr_t) region->pg_dir;
     pmm_free_page((void*) dir_phys);
-    region_remove(region);
+    vmm_region_remove(region);
     kfree(region, sizeof(vmm_region_t));
 }
 
