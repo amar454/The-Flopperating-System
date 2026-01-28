@@ -25,6 +25,7 @@ CWARNINGS = -Werror \
             -Wno-unused-but-set-variable \
             -Wno-missing-field-initializers \
             -Wno-sign-compare \
+	    -Wno-array-bounds \
             -Wno-format-truncation \
             -Wno-format-overflow \
             -Wno-format-extra-args \
@@ -42,7 +43,7 @@ DRIVER_SRC = drivers/vga/vgahandler.c drivers/keyboard/keyboard.c drivers/time/f
              drivers/io/io.c drivers/vga/framebuffer.c drivers/acpi/acpi.c drivers/mouse/ps2ms.c drivers/ata/ata.c
 FS_SRC = fs/tmpflopfs/tmpflopfs.c fs/vfs/vfs.c fs/procfs/procfs.c
 LIB_SRC = lib/str.c lib/flopmath.c lib/logging.c
-APP_SRC = apps/echo.c apps/dsp/dsp.c
+APP_SRC = apps/echo.c 
 OTHER_SRC = kernel/kernel.c multiboot/multiboot.c sys/syscall.c init/init.c
 ASM_SRC = kernel/entry.asm task/usermode_entry.asm task/ctx.asm interrupts/interrupts_asm.asm sys/syscall_asm.asm
 FLANTERM_SRC = flanterm/src/flanterm.c flanterm/src/flanterm_backends/fb.c

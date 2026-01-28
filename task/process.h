@@ -124,6 +124,6 @@ pid_t proc_fork(process_t* parent);
 int proc_init();
 int proc_exit(process_t* process, int status);
 pid_t proc_dup(pid_t pid);
-process_t* proc_get_process_by_pid();
+process_t* proc_get_process_by_pid(pid_t pid);
 int proc_exit_all_threads(process_t* process);
 #endif
