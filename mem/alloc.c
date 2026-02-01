@@ -1,3 +1,18 @@
+/*
+
+Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
+
+This file is part of The Flopperating System.
+
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later version.
+
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
+
+[DESCRIPTION] - heap allocator implementation. uses my custom "boxes" allocator, uses a hash table to store boxes.
+*/
+
 #include "pmm.h"
 #include "vmm.h"
 #include "alloc.h"

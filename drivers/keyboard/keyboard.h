@@ -37,9 +37,20 @@ typedef enum scancodes {
     KEY_PAGE_DOWN = 0x51
 } scancodes_t;
 
+typedef enum keyboard_layout {
+    QWERTY
+} keyboard_layout_t;
+
+typedef struct keyboard {
+    keyboard_layout_t layout;
+    const char* kbd_map_normal;
+    const char* kbd_map_shifted;
+} keyboard_t;
+
 void keyboard_handler();
 const char* key_to_char(unsigned char key);
 unsigned char try_read_key(void);
 char get_char(void);
 char try_get_char(void);
+void keyboard_init();
 #endif // KEYBOARD_H

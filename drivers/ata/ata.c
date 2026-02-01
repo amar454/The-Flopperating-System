@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License along with The
 #include <stdbool.h>
 #include "../io/io.h"
 #include "../../lib/logging.h"
+#include "../../task/sched.h"
 #include "ata.h"
 #include "../../interrupts/interrupts.h"
 
@@ -209,7 +210,7 @@ int ata_finish_request(ata_request_t* req) {
     }
 
     // unknown request type
-    log("ata: unknown request type", RED);
+    log("ata: unknown request type\n", RED);
     return -1;
 }
 
@@ -315,5 +316,5 @@ void ata_init(void) {
         ata_init_drive(drive);
     }
 
-    log("ata: init - ok", GREEN);
+    log("ata: init - ok\n", GREEN);
 }

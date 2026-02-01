@@ -31,12 +31,6 @@ uint32_t global_tick_count = 0;
 idt_entry_t idt[IDT_SIZE];
 idt_ptr_t idtp;
 
-typedef struct int_frame {
-    uint32_t gs, fs, es, ds;
-    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax;
-    uint32_t int_no, err_code;
-    uint32_t eip, cs, eflags, useresp, ss;
-} int_frame_t;
 
 void interrupts_stack_init() {
     uint32_t stack_top = (uint32_t) (interrupt_stack + ISR_STACK_SIZE);

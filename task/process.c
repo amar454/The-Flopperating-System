@@ -10,9 +10,9 @@ The Flopperating System is distributed in the hope that it will be useful, but W
 
 You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
+[DESCRIPTION] - process management and interface for the Flopperating System.
 */
 
-#include "sched.h"
 #include "../mem/alloc.h"
 #include "../mem/pmm.h"
 #include "../mem/paging.h"
@@ -29,7 +29,7 @@ You should have received a copy of the GNU General Public License along with The
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-
+#include "process.h"
 static bool init_process_ran = false;
 static process_t* init_process;
 proc_table_t* proc_tbl;

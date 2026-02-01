@@ -12,6 +12,13 @@ typedef struct {
     uint16_t base_high;
 } __attribute__((packed)) idt_entry_t;
 
+typedef struct int_frame {
+    uint32_t gs, fs, es, ds;
+    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax;
+    uint32_t int_no, err_code;
+    uint32_t eip, cs, eflags, useresp, ss;
+} int_frame_t;
+
 #define SYSCALL_ISR_DISPATCH(frame)                                                                                    \
     do {                                                                                                               \
         uint32_t _num = (frame)->eax;                                                                                  \

@@ -2,13 +2,13 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 */
 
@@ -1051,7 +1051,7 @@ int sys_chdir(struct syscall_args* args) {
 // uses qemu hypervisor call
 int sys_reboot(struct syscall_args* args) {
     (void) args;
-    qemu_power_off();
+    acpi_qemu_power_off();
     return 0;
 }
 
@@ -1369,6 +1369,58 @@ int sys_mprotect(struct syscall_args* args) {
     }
 
     return 0;
+}
+
+syscall_function_pointer* syscall_dispatch_table = NULL;
+
+void syscall_init() {
+    static syscall_function_pointer sys_init_tbl[] = {[SYSCALL_READ] = sys_read,
+                                                      [SYSCALL_WRITE] = sys_write,
+                                                      [SYSCALL_FORK] = sys_fork,
+                                                      [SYSCALL_OPEN] = sys_open,
+                                                      [SYSCALL_CLOSE] = sys_close,
+                                                      [SYSCALL_MMAP] = sys_mmap,
+                                                      [SYSCALL_SEEK] = sys_seek,
+                                                      [SYSCALL_STAT] = sys_stat,
+                                                      [SYSCALL_FSTAT] = sys_fstat,
+                                                      [SYSCALL_UNLINK] = sys_unlink,
+                                                      [SYSCALL_MKDIR] = sys_mkdir,
+                                                      [SYSCALL_RMDIR] = sys_rmdir,
+                                                      [SYSCALL_TRUNCATE] = sys_truncate,
+                                                      [SYSCALL_FTRUNCATE] = sys_ftruncate,
+                                                      [SYSCALL_RENAME] = sys_rename,
+                                                      [SYSCALL_GETPID] = sys_getpid,
+                                                      [SYSCALL_CHDIR] = sys_chdir,
+                                                      [SYSCALL_DUP] = sys_dup,
+                                                      [SYSCALL_PIPE] = sys_pipe,
+                                                      [SYSCALL_CLONE] = sys_clone,
+                                                      [SYSCALL_IOCTL] = sys_ioctl,
+                                                      [SYSCALL_PRINT] = sys_print,
+                                                      [SYSCALL_REBOOT] = sys_reboot,
+                                                      [SYSCALL_MUNMAP] = sys_munmap,
+                                                      [SYSCALL_CREAT] = sys_creat,
+                                                      [SYSCALL_SCHED_YIELD] = sys_sched_yield,
+                                                      [SYSCALL_KILL] = sys_kill,
+                                                      [SYSCALL_LINK] = sys_link,
+                                                      [SYSCALL_GETUID] = sys_getuid,
+                                                      [SYSCALL_GETGID] = sys_getgid,
+                                                      [SYSCALL_GETEUID] = sys_geteuid,
+                                                      [SYSCALL_GETSID] = sys_getsid,
+                                                      [SYSCALL_SETUID] = sys_setuid,
+                                                      [SYSCALL_SETGID] = sys_setgid,
+                                                      [SYSCALL_REGIDT] = sys_regidt,
+                                                      [SYSCALL_GET_PRIORITY_MAX] = sys_get_priority_max,
+                                                      [SYSCALL_GET_PRIORITY_MIN] = sys_get_priority_min,
+                                                      [SYSCALL_FSMOUNT] = sys_fsmount,
+                                                      [SYSCALL_COPY_FILE_RANGE] = sys_copy_file_range,
+                                                      [SYSCALL_GETCWD] = sys_getcwd,
+                                                      [SYSCALL_MPROTECT] = sys_mprotect,
+                                                      [SYSCALL_MREMAP] = sys_mremap,
+                                                      [SYSCALL_NUM] = NULL};
+
+    syscall_dispatch_table = sys_init_tbl;
+
+    log("syscall: dispatch table init - ok\n", GREEN);
 }
 
 // called by the assembly syscall_routine when handling the 0x80 software interrupt

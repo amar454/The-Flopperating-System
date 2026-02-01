@@ -1,148 +1,121 @@
-// SPDX-License-Identifier: GPL-3.0
-#ifndef ACPI_H
-#define ACPI_H
+#ifndef FLOPPERATING_ACPI_H
+#define FLOPPERATING_ACPI_H
 
-#include <stddef.h>
 #include <stdint.h>
+#include <stddef.h>
 
-typedef enum {
-    ACPI_SIG_RSDT = 0x54445352,
-    ACPI_SIG_APIC = 0x43495041,
-    ACPI_SIG_FACP = 0x50434146,
-    ACPI_SIG_DSDT = 0x54445344,
-    ACPI_SIG_S5 = 0x5F35535F,
-    ACPI_SIG_PTS = 0x5354505F,
-    ACPI_SIG_SST = 0x5453535F,
-    ACPI_SIG_RSDP_L = 0x20445352,
-    ACPI_SIG_RSDP_H = 0x20525450
-} acpi_signature_t;
-
-typedef enum {
-    BIOS_ROM_START = 0x000E0000,
-    BIOS_ROM_END = 0x00100000,
-    EBDA_PTR_ADDR = 0x40E,
-    EBDA_WINDOW_SIZE = 1024
-} bios_mem_t;
-
-typedef enum {
-    ACPI_TABLE_HEAD_SIZE = 36,
-    MADT_ENTRY_OFFSET = 44,
-    MADT_TYPE_LAPIC = 0
-} acpi_table_config_t;
-
-typedef enum {
-    ACPI_ENABLE_LOOP_MAX = 300,
-    SLP_TYP_SHIFT = 10,
-    SLP_EN_BIT = (1 << 13),
-    SCI_EN_BIT = 1
-} acpi_power_constants_t;
-
-typedef enum {
-    AML_OP_ZERO = 0x00,
-    AML_OP_ONE = 0x01,
-    AML_OP_ALIAS = 0x06,
-    AML_OP_NAME = 0x08,
-    AML_OP_BYTE_PREFIX = 0x0A,
-    AML_OP_WORD_PREFIX = 0x0B,
-    AML_OP_DWORD_PREFIX = 0x0C,
-    AML_OP_STRING_PREFIX = 0x0D,
-    AML_OP_QWORD_PREFIX = 0x0E,
-    AML_OP_SCOPE = 0x10,
-    AML_OP_BUFFER = 0x11,
-    AML_OP_PACKAGE = 0x12,
-    AML_OP_METHOD = 0x14,
-    AML_OP_EXT_PREFIX = 0x5B,
-    AML_OP_ONES = 0xFF,
-    AML_EXT_MUTEX = 0x80,
-    AML_EXT_EVENT = 0x81,
-    AML_EXT_COND_REF = 0x82,
-    AML_EXT_POWER_RES = 0x83
-} aml_op_t;
-
-typedef enum {
-    QEMU_SHUTDOWN_PORT = 0x604,
-    QEMU_SHUTDOWN_CMD = 0x2000
-} qemu_constants_t;
-
-typedef enum {
-    TOKEN_INVALID = 0,
-    TOKEN_RSD_PTR,
-    TOKEN_RSDT,
-    TOKEN_APIC,
-    TOKEN_FACP,
-    TOKEN_DSDT
-} acpi_token_t;
-
-// --- DATA STRUCTURES ---
-
-typedef enum {
-    ACPI_TYPE_INTEGER = 0,
-    ACPI_TYPE_STRING,
-    ACPI_TYPE_BUFFER,
-    ACPI_TYPE_PACKAGE,
-    ACPI_TYPE_METHOD,
-    ACPI_TYPE_DEVICE,
-    ACPI_TYPE_UNKNOWN
-} acpi_object_type;
-
-struct acpi_int {
-    uint64_t value;
-};
-
-struct acpi_method {
-    uint8_t* aml_start;
-    uint32_t aml_len;
-};
-
-struct acpi_buffer {
-    uint8_t* data;
-    uint32_t len;
-};
-
-typedef struct acpi_object {
-    union {
-        struct acpi_int integer;
-        struct acpi_method method;
-        struct acpi_buffer buffer; // Used for both string and buffer
-    };
-
-    acpi_object_type type;
-} acpi_object_t;
-
-typedef struct acpi_ns_node {
-    uint32_t name;
-    acpi_object_t* obj;
-    struct acpi_ns_node* parent;
-    struct acpi_ns_node* children;
-    struct acpi_ns_node* next;
-} acpi_ns_node_t;
-
-struct rsd_ptr {
-    char signature[8];
+typedef struct {
+    char sig[8];
     uint8_t checksum;
-    char oem_id[6];
     uint8_t revision;
-    uint32_t rsdt_address;
-} __attribute__((packed));
-
-struct facp {
-    char signature[4];
+    uint32_t rsdt;
     uint32_t length;
-    char unused1[32];
+    uint64_t xsdt;
+    uint8_t ext_checksum;
+    uint8_t reserved[3];
+} __attribute__((packed)) rsdp_t;
+
+typedef struct {
+    uint32_t sig;
+    uint32_t length;
+    uint8_t revision;
+    uint8_t checksum;
+    char oemid[6];
+    char oem_table[8];
+    uint32_t oem_rev;
+    uint32_t creator_id;
+    uint32_t creator_rev;
+} __attribute__((packed)) sdt_t;
+
+typedef struct {
+    sdt_t h;
+    uint32_t firmware_ctrl;
     uint32_t dsdt;
-    char unused2[4];
+    uint8_t reserved;
+    uint8_t preferred_pm_profile;
+    uint16_t sci_int;
     uint32_t smi_cmd;
     uint8_t acpi_enable;
     uint8_t acpi_disable;
-    char unused3[10];
+    uint8_t s4bios_req;
+    uint8_t pstate_cnt;
+    uint32_t pm1a_evt_blk;
+    uint32_t pm1b_evt_blk;
     uint32_t pm1a_cnt_blk;
     uint32_t pm1b_cnt_blk;
-    char unused4[17];
+    uint32_t pm2_cnt_blk;
+    uint32_t pm_tmr_blk;
+    uint32_t gpe0_blk;
+    uint32_t gpe1_blk;
+    uint8_t pm1_evt_len;
     uint8_t pm1_cnt_len;
-} __attribute__((packed));
+    uint8_t pm2_cnt_len;
+    uint8_t pm_tmr_len;
+    uint8_t gpe0_len;
+    uint8_t gpe1_len;
+    uint8_t gpe1_base;
+    uint8_t cst_cnt;
+    uint16_t p_lvl2_lat;
+    uint16_t p_lvl3_lat;
+    uint16_t flush_size;
+    uint16_t flush_stride;
+    uint8_t duty_offset;
+    uint8_t duty_width;
+    uint8_t day_alrm;
+    uint8_t mon_alrm;
+    uint8_t century;
+    uint16_t iapc_boot_arch;
+    uint8_t reserved2;
+    uint32_t flags;
+} __attribute__((packed)) fadt_t;
+
+enum acpi_rsdp_signature_low {
+    ACPI_RSDP_SIG_LO = 0x20525450
+};
+
+enum acpi_rsdp_signature_high {
+    ACPI_RSDP_SIG_HI = 0x20445352
+};
+
+enum acpi_table_signatures {
+    ACPI_SIG_RSDT = 0x54445352,
+    ACPI_SIG_XSDT = 0x54445358,
+    ACPI_SIG_FADT = 0x50434146,
+    ACPI_SIG_APIC = 0x43495041,
+    ACPI_SIG_DSDT = 0x54445344
+};
+
+enum acpi_pm1_bits {
+    ACPI_PM1_SCI_EN = 1 << 0,
+    ACPI_PM1_SLP_EN = 1 << 13
+};
+
+enum acpi_pm1_shift {
+    ACPI_PM1_SLP_TYP_SHIFT = 10
+};
+
+enum acpi_madt_types {
+    ACPI_MADT_TYPE_LAPIC = 0
+};
+
+enum acpi_scan_ranges {
+    ACPI_SCAN_BIOS_START = 0xE0000,
+    ACPI_SCAN_BIOS_END = 0x100000,
+    ACPI_SCAN_EBDA_PTR = 0x40E,
+    ACPI_SCAN_EBDA_SIZE = 1024
+};
+
+enum acpi_enable_limits {
+    ACPI_ENABLE_TIMEOUT = 1000000
+};
+
+enum acpi_qemu_constants {
+    ACPI_QEMU_PORT = 0x604,
+    ACPI_QEMU_CMD = 0x2000
+};
 
 int acpi_init(void);
 void acpi_power_off(void);
-void qemu_power_off(void);
+void acpi_qemu_power_off(void);
 
-#endif // ACPI_H
+#endif

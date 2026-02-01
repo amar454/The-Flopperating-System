@@ -2,19 +2,19 @@
 
 Copyright 2024-2026 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 ------------------------------------------------------------------------------
 
 kernel.c:
 
-    This is the kernel of floppaOS, a free and open-source 32-bit operating system.
+    This is the kernel of The Flopperating System, a free and open-source 32-bit operating system.
     This is the prerelease alpha-v0.1.3 code, still in development.
     It is multiboot compliant, and takes the multiboot info pointer and magic number in kmain.
 
@@ -52,7 +52,7 @@ kernel.c:
 #include "../drivers/vga/framebuffer.h"
 #include <stdint.h>
 #include "../flanterm/src/flanterm.h"
-#include "../flanterm/src/flanterm_backends/fb.h"
+#include "../flanterm/src/flanterm_backends/fb.h"s
 
 void halt() {
     while (1) {
@@ -231,7 +231,8 @@ int kmain(uint32_t magic, multiboot_info_t* mb_info) {
     echo("The Flopperating System has finished kernel booting! Now we do nothing.\n", GREEN);
 
     draw_floppaos_logo();
-    echo("floppaOS, The Flopperating System - Copyright (C) 2024-2026 Amar Djulovic <aaamargml@gmail.com>\n",
+    echo("The Flopperating System, The Flopperating System - Copyright (C) 2024-2026 Amar Djulovic "
+         "<aaamargml@gmail.com>\n",
          YELLOW); // copyright notice
 
     while (1) {

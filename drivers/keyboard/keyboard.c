@@ -25,16 +25,6 @@ static int shift_pressed = 0;
 static int ctrl_pressed = 0;
 static int alt_pressed = 0;
 
-typedef enum keyboard_layout {
-    QWERTY
-} keyboard_layout_t;
-
-typedef struct keyboard {
-    keyboard_layout_t layout;
-    const char* kbd_map_normal;
-    const char* kbd_map_shifted;
-} keyboard_t;
-
 static const char kbd_map_normal[] = {
     0,   27,  '1', '2', '3',  '4', '5', '6',  '7', '8', '9',  '0', '-', '=', '\b', '\t', 'q', 'w',
     'e', 'r', 't', 'y', 'u',  'i', 'o', 'p',  '[', ']', '\n', 0,   'a', 's', 'd',  'f',  'g', 'h',
@@ -75,7 +65,6 @@ const char* key_to_char(unsigned char key) {
             return "";
     }
 
-    // 2. Handle Named/Special Keys
     switch (key) {
         case KEY_ESC:
             return "Esc";
@@ -161,4 +150,6 @@ void keyboard_init() {
     keyboard.layout = QWERTY;
     keyboard.kbd_map_normal = kbd_map_normal;
     keyboard.kbd_map_shifted = kbd_map_shifted;
+    log("keyboard: layout set to qwerty\n", GREEN);
+    log("keyboard: init - ok\n", GREEN);
 }

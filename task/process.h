@@ -16,7 +16,6 @@ typedef struct process process_t;
 typedef signed int pid_t;
 typedef int uid_t;
 typedef struct thread_list thread_list_t;
-extern process_t* current_process;
 #define MAX_PROCESSES 256
 
 typedef enum process_state {
@@ -124,6 +123,6 @@ pid_t proc_fork(process_t* parent);
 int proc_init();
 int proc_exit(process_t* process, int status);
 pid_t proc_dup(pid_t pid);
-process_t* proc_get_process_by_pid();
+process_t* proc_get_process_by_pid(pid_t pid);
 int proc_exit_all_threads(process_t* process);
 #endif

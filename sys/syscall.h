@@ -15,6 +15,7 @@ struct syscall_args {
 };
 
 typedef int (*syscall_function_pointer)(struct syscall_args*);
+
 int c_syscall_routine(uint32_t num, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);
 
 typedef enum syscall_num {
@@ -59,19 +60,9 @@ typedef enum syscall_num {
     SYSCALL_COPY_FILE_RANGE = 38,
     SYSCALL_GETCWD = 39,
     SYSCALL_MPROTECT = 40,
-    SYSCALL_MREMAP = 41
+    SYSCALL_MREMAP = 41,
+    SYSCALL_NUM = 42
 } syscall_num_t;
-
-typedef struct int_frame {
-    uint32_t gs, fs, es, ds;
-
-    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax;
-
-    uint32_t int_no;
-    uint32_t err_code;
-
-    uint32_t eip, cs, eflags, useresp, ss;
-} int_frame_t;
 
 typedef struct syscall_table {
     int (*sys_read)(struct syscall_args* args);
@@ -246,50 +237,7 @@ int sys_mprotect(struct syscall_args* args);
 // 41: mremap(addr, old_len, new_len, flags)
 int sys_mremap(struct syscall_args* args);
 
-syscall_function_pointer syscall_dispatch_table[] = {
-    [SYSCALL_READ] = sys_read,
-    [SYSCALL_WRITE] = sys_write,
-    [SYSCALL_FORK] = sys_fork,
-    [SYSCALL_OPEN] = sys_open,
-    [SYSCALL_CLOSE] = sys_close,
-    [SYSCALL_MMAP] = sys_mmap,
-    [SYSCALL_SEEK] = sys_seek,
-    [SYSCALL_STAT] = sys_stat,
-    [SYSCALL_FSTAT] = sys_fstat,
-    [SYSCALL_UNLINK] = sys_unlink,
-    [SYSCALL_MKDIR] = sys_mkdir,
-    [SYSCALL_RMDIR] = sys_rmdir,
-    [SYSCALL_TRUNCATE] = sys_truncate,
-    [SYSCALL_FTRUNCATE] = sys_ftruncate,
-    [SYSCALL_RENAME] = sys_rename,
-    [SYSCALL_GETPID] = sys_getpid,
-    [SYSCALL_CHDIR] = sys_chdir,
-    [SYSCALL_DUP] = sys_dup,
-    [SYSCALL_PIPE] = sys_pipe,
-    [SYSCALL_CLONE] = sys_clone,
-    [SYSCALL_IOCTL] = sys_ioctl,
-    [SYSCALL_PRINT] = sys_print,
-    [SYSCALL_REBOOT] = sys_reboot,
-    [SYSCALL_MUNMAP] = sys_munmap,
-    [SYSCALL_CREAT] = sys_creat,
-    [SYSCALL_SCHED_YIELD] = sys_sched_yield,
-    [SYSCALL_KILL] = sys_kill,
-    [SYSCALL_LINK] = sys_link,
-    [SYSCALL_GETUID] = sys_getuid,
-    [SYSCALL_GETGID] = sys_getgid,
-    [SYSCALL_GETEUID] = sys_geteuid,
-    [SYSCALL_GETSID] = sys_getsid,
-    [SYSCALL_SETUID] = sys_setuid,
-    [SYSCALL_SETGID] = sys_setgid,
-    [SYSCALL_REGIDT] = sys_regidt,
-    [SYSCALL_GET_PRIORITY_MAX] = sys_get_priority_max,
-    [SYSCALL_GET_PRIORITY_MIN] = sys_get_priority_min,
-    [SYSCALL_FSMOUNT] = sys_fsmount,
-    [SYSCALL_COPY_FILE_RANGE] = sys_copy_file_range,
-    [SYSCALL_GETCWD] = sys_getcwd,
-    [SYSCALL_MPROTECT] = sys_mprotect,
-    [SYSCALL_MREMAP] = sys_mremap,
-};
+void syscall_init();
 
 extern syscall_table_t syscall_table;
 

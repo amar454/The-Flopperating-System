@@ -2,8 +2,7 @@
 #ifndef ATA_H
 #define ATA_H
 #include <stdint.h>
-#include "../../task/sync/mutex.h"
-
+#include "../../task/sync/spinlock.h"
 typedef enum ata_port {
     ATA_PORT_BASE = 0x1F0,
     ATA_PORT_DATA = ATA_PORT_BASE + 0,
