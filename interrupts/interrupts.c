@@ -23,14 +23,12 @@ You should have received a copy of the GNU General Public License along with The
 #include "../mem/vmm.h"
 #include "../mem/pmm.h"
 #include "../mem/paging.h"
-
 #include "../mem/utils.h"
 #include "../kernel/kernel.h"
 
 uint32_t global_tick_count = 0;
 idt_entry_t idt[IDT_SIZE];
 idt_ptr_t idtp;
-
 
 void interrupts_stack_init() {
     uint32_t stack_top = (uint32_t) (interrupt_stack + ISR_STACK_SIZE);
@@ -193,7 +191,8 @@ static void idt_init() {
     __asm__ volatile("lidt %0" ::"m"(idtp));
 
     // unmask interrupts
-    __asm__ volatile("sti");
+    IA32_INT_UNMASK();
+
     log("idt: init - ok\n", GREEN);
 }
 

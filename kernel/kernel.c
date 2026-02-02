@@ -52,7 +52,7 @@ kernel.c:
 #include "../drivers/vga/framebuffer.h"
 #include <stdint.h>
 #include "../flanterm/src/flanterm.h"
-#include "../flanterm/src/flanterm_backends/fb.h"s
+#include "../flanterm/src/flanterm_backends/fb.h"
 
 void halt() {
     while (1) {
