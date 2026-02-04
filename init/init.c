@@ -10,6 +10,10 @@ The Flopperating System is distributed in the hope that it will be useful, but W
 
 You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
+[DESCRIPTION] - initialization methods
+
+[DETAILS] - splits initialization into stages for modularity and easier debugging.
+            allows you to run certain stages or without for debugging
 */
 #include "../task/sched.h"
 #include "../drivers/io/io.h"
@@ -32,7 +36,7 @@ You should have received a copy of the GNU General Public License along with The
 #include "../mem/utils.h"
 #include "../kernel/kernel.h"
 #include "../multiboot/multiboot.h"
-extern void framebuffer_term_init();
+#include "init.h"
 
 void init_stage_early(multiboot_info_t* mb_info) {
     framebuffer_init(mb_info);
@@ -106,47 +110,43 @@ void init_stage_sys() {
     log("init: sys stage init - ok\n", LIGHT_GRAY);
 }
 
-typedef enum {
-    INIT_STAGE_EARLY,
-    INIT_STAGE_CPU,
-    INIT_STAGE_BLOCK,
-    INIT_STAGE_MEM,
-    INIT_STAGE_MIDDLE,
-    INIT_STAGE_FS,
-    INIT_STAGE_TASK,
-    INIT_STAGE_SYS,
-    INIT_STAGE_COUNT
-} init_stage_t;
-
-void init(multiboot_info_t* mb_info) {
-    for (int stage = 0; stage < INIT_STAGE_COUNT; stage++) {
-        switch ((init_stage_t) stage) {
-            case INIT_STAGE_EARLY:
-                init_stage_early(mb_info);
-                break;
-            case INIT_STAGE_CPU:
-                init_stage_cpu();
-                break;
-            case INIT_STAGE_BLOCK:
-                init_stage_block();
-                break;
-            case INIT_STAGE_MIDDLE:
-                init_stage_middle();
-                break;
-            case INIT_STAGE_MEM:
-                init_stage_mem(mb_info);
-                break;
-            case INIT_STAGE_FS:
-                init_stage_fs();
-                break;
-            case INIT_STAGE_TASK:
-                init_stage_task();
-                break;
-            case INIT_STAGE_SYS:
-                init_stage_sys();
-                break;
-            default:
-                break;
-        }
+void init_perform_config(init_cfg_t config, multiboot_info_t* mb_info) {
+    if (config.early) {
+        init_stage_early(mb_info);
     }
+
+    if (config.cpu) {
+        init_stage_cpu();
+    }
+
+    if (config.block) {
+        init_stage_block();
+    }
+
+    if (config.middle) {
+        init_stage_middle();
+    }
+
+    if (config.mem) {
+        init_stage_mem(mb_info);
+    }
+
+    if (config.fs) {
+        init_stage_fs();
+    }
+
+    if (config.task) {
+        init_stage_task();
+    }
+
+    if (config.sys) {
+        init_stage_sys();
+    }
+}
+
+init_cfg_t default_config = {
+    .early = true, .cpu = true, .block = true, .mem = true, .middle = true, .fs = true, .task = true, .sys = true};
+
+void init(multiboot_info_t* mb_info, init_cfg_t config) {
+    init_perform_config(config, mb_info);
 }

@@ -152,26 +152,92 @@ static void proc_family_transfer_children(process_t* old_parent, process_t* new_
     old_parent->children = NULL;
 }
 
-static process_t proc_table_static[MAX_PROCESSES];
-
 static process_t* proc_alloc_process_struct() {
-    for (int i = 0; i < MAX_PROCESSES; ++i) {
-        if (proc_table_static[i].state == 0) {
-            flop_memset(&proc_table_static[i], 0, sizeof(process_t));
-            return &proc_table_static[i];
-        }
-    }
-    return NULL;
-}
+    process_t* proc = (process_t*) kmalloc(sizeof(process_t));
 
-static thread_list_t thread_list_pool[MAX_PROCESSES];
-static size_t thread_list_index = 0;
-
-static thread_list_t* proc_alloc_thread_list() {
-    if (thread_list_index >= MAX_PROCESSES) {
+    if (proc == NULL) {
         return NULL;
     }
-    return &thread_list_pool[thread_list_index++];
+
+    flop_memset(proc, 0, sizeof(process_t));
+
+    return proc;
+}
+
+static thread_list_t* proc_alloc_thread_list() {
+    thread_list_t* list = (thread_list_t*) kmalloc(sizeof(thread_list_t));
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    flop_memset(list, 0, sizeof(thread_list_t));
+
+    return list;
+}
+
+static void proc_free_process_struct(process_t* process) {
+    if (process) {
+        kfree(process, sizeof(process_t));
+    }
+}
+
+static void proc_free_thread_list(thread_list_t* list) {
+    if (list) {
+        kfree(list, sizeof(thread_list_t));
+    }
+}
+
+pid_t proc_waitpid(pid_t pid, int* status, int options) {
+    if (!current_process) {
+        return -1;
+    }
+
+    while (1) {
+        int children_found = 0;
+        process_t* child = current_process->children;
+        process_t* target = NULL;
+
+        spinlock(&proc_tbl->proc_table_lock);
+
+        while (child) {
+            if (pid == -1 || child->pid == pid) {
+                children_found = 1;
+                if (child->state == ZOMBIE) {
+                    target = child;
+                    break;
+                }
+            }
+            child = child->siblings;
+        }
+
+        if (target) {
+            if (status) {
+                *status = target->exit_status;
+            }
+            pid_t child_pid = target->pid;
+
+            proc_family_remove_child(current_process, target);
+
+            spinlock_unlock(&proc_tbl->proc_table_lock, true);
+
+            proc_clean(target);
+
+            return child_pid;
+        }
+
+        spinlock_unlock(&proc_tbl->proc_table_lock, true);
+
+        if (!children_found) {
+            return -1;
+        }
+
+        if (options & WNOHANG) {
+            return 0;
+        }
+
+        sched_yield();
+    }
 }
 
 static void proc_alloc_assign_ids(process_t* process) {

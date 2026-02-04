@@ -2,13 +2,17 @@
 
 Copyright 2024, 2025 Amar Djulovic <aaamargml@gmail.com>
 
-This file is part of FloppaOS.
+This file is part of The Flopperating System.
 
-FloppaOS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
+The Flopperating System is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either veregion_startion 3 of the License, or (at your option) any later veregion_startion.
 
-FloppaOS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The Flopperating System is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with FloppaOS. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
+
+[DESCRIPTION] - physical page frame allocator for the Flopperating System Kernel
+
+[DETAILS] - uses the buddy system to prevent fragmentation
 
 */
 
@@ -58,7 +62,7 @@ static void pmm_buddy_split(uintptr_t addr, uint32_t order) {
 
 // merge two pages into a higher order page
 static void pmm_buddy_merge(uintptr_t addr, uint32_t order) {
-    uintptr_t buddy_addr = addr ^ (((uintptr_t) 1 << order) * PAGE_SIZE);
+    uintptr_t buddy_addr = pmm_get_buddy_address(addr, order);
 
     struct page* page = phys_to_page_index(addr);
     struct page* buddy_page = phys_to_page_index(buddy_addr);
@@ -576,486 +580,50 @@ int pmm_is_valid_addr(uintptr_t addr) {
     return 1;
 }
 
-static size_t cm_next_pow2(size_t x) {
-    if (x <= 4) {
-        return 4;
-    }
-    x--;
-    for (size_t shift = 1; shift < sizeof(size_t) * 8; shift <<= 1) {
-        x |= x >> shift;
-    }
-    return x + 1;
+uintptr_t pmm_get_buddy_address(uintptr_t addr, uint32_t order) {
+    return addr ^ ((uintptr_t) 1 << order) * PAGE_SIZE;
 }
 
-static uint32_t cm_hash(uint8_t k) {
-    uint32_t x = k;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    return x ? x : 1;
+bool pmm_is_primary_buddy(uintptr_t addr, uint32_t order) {
+    return (addr & ((uintptr_t) 1 << order) * PAGE_SIZE) == 0;
 }
 
-static int cm_init(child_map_t* m, size_t cap) {
-    size_t c = cm_next_pow2(cap);
-    m->keys = (uint8_t*) kmalloc(c);
-    m->vals = (void**) kmalloc(sizeof(void*) * c);
-    m->state = (uint8_t*) kmalloc(c);
-    if (!m->keys || !m->vals || !m->state) {
-        if (m->keys) {
-            kfree(m->keys, c);
-        }
-        if (m->vals) {
-            kfree(m->vals, sizeof(void*) * c);
-        }
-        if (m->state) {
-            kfree(m->state, c);
-        }
-        return -1;
-    }
-    flop_memset(m->state, 0, c);
-    m->cap = c;
-    m->len = 0;
-    return 0;
+size_t pmm_get_block_size(uint32_t order) {
+    return (size_t) PAGE_SIZE << order;
 }
 
-static void cm_free(child_map_t* m) {
-    if (!m) {
-        return;
-    }
-    if (m->keys) {
-        kfree(m->keys, m->cap);
-    }
-    if (m->vals) {
-        kfree(m->vals, sizeof(void*) * m->cap);
-    }
-    if (m->state) {
-        kfree(m->state, m->cap);
-    }
-    m->keys = NULL;
-    m->vals = NULL;
-    m->state = NULL;
-    m->cap = 0;
-    m->len = 0;
+bool pmm_is_page_free(uintptr_t addr) {
+    struct page* pg = phys_to_page_index(addr);
+    return pg && pg->is_free;
 }
 
-static int cm_resize(child_map_t* m, size_t newcap) {
-    child_map_t n;
-    if (cm_init(&n, newcap)) {
-        return -1;
-    }
-    for (size_t i = 0; i < m->cap; i++) {
-        if (m->state[i] == 1) {
-            uint8_t k = m->keys[i];
-            void* v = m->vals[i];
-            size_t mask = n.cap - 1;
-            size_t pos = cm_hash(k) & mask;
-            while (n.state[pos] == 1) {
-                pos = (pos + 1) & mask;
-            }
-            n.state[pos] = 1;
-            n.keys[pos] = k;
-            n.vals[pos] = v;
-            n.len++;
-        }
-    }
-    cm_free(m);
-    *m = n;
-    return 0;
+uint32_t pmm_get_page_order(uintptr_t addr) {
+    struct page* pg = phys_to_page_index(addr);
+    return pg ? pg->order : 0;
 }
 
-static void** cm_get_ref(child_map_t* m, uint8_t key) {
-    if (!m->cap) {
-        if (cm_init(m, 4)) {
-            return NULL;
-        }
-    }
-    size_t mask = m->cap - 1;
-    size_t pos = cm_hash(key) & mask;
-    size_t firegion_startt_del = (size_t) -1;
-    for (;;) {
-        uint8_t st = m->state[pos];
-        if (st == 0) {
-            size_t use = (firegion_startt_del != (size_t) -1) ? firegion_startt_del : pos;
-            m->state[use] = 1;
-            m->keys[use] = key;
-            m->vals[use] = NULL;
-            m->len++;
-            if (m->len * 10 > m->cap * 7) {
-                if (cm_resize(m, m->cap << 1)) {
-                    return NULL;
-                }
-                return cm_get_ref(m, key);
-            }
-            return &m->vals[use];
-        } else if (st == 2) {
-            if (firegion_startt_del == (size_t) -1) {
-                firegion_startt_del = pos;
-            }
-        } else {
-            if (m->keys[pos] == key) {
-                return &m->vals[pos];
-            }
-        }
-        pos = (pos + 1) & mask;
-    }
-}
-
-static void* cm_find(child_map_t* m, uint8_t key) {
-    if (!m->cap) {
-        return NULL;
-    }
-    size_t mask = m->cap - 1;
-    size_t pos = cm_hash(key) & mask;
-    for (;;) {
-        uint8_t st = m->state[pos];
-        if (st == 0) {
-            return NULL;
-        }
-        if (st == 1 && m->keys[pos] == key) {
-            return m->vals[pos];
-        }
-        pos = (pos + 1) & mask;
-    }
-}
-
-static int cm_del(child_map_t* m, uint8_t key) {
-    if (!m->cap) {
-        return -1;
-    }
-    size_t mask = m->cap - 1;
-    size_t pos = cm_hash(key) & mask;
-    for (;;) {
-        uint8_t st = m->state[pos];
-        if (st == 0) {
-            return -1;
-        }
-        if (st == 1 && m->keys[pos] == key) {
-            m->state[pos] = 2;
-            m->vals[pos] = NULL;
-            m->len--;
-            return 0;
-        }
-        pos = (pos + 1) & mask;
-    }
-}
-
-static radix_node_t* rt_new_node(void) {
-    radix_node_t* n = (radix_node_t*) kmalloc(sizeof(radix_node_t));
-    if (!n) {
-        return NULL;
-    }
-    n->entry = NULL;
-    n->map.cap = 0;
-    n->map.len = 0;
-    n->map.keys = NULL;
-    n->map.vals = NULL;
-    n->map.state = NULL;
-    return n;
-}
-
-static void rt_free_node_recuregion_startive(radix_node_t* n) {
-    if (!n) {
-        return;
-    }
-    if (n->map.cap) {
-        for (size_t i = 0; i < n->map.cap; i++) {
-            if (n->map.state[i] == 1) {
-                radix_node_t* child = (radix_node_t*) n->map.vals[i];
-                rt_free_node_recuregion_startive(child);
-            }
-        }
-    }
-    if (n->entry) {
-        pmm_free_page((void*) n->entry->phys);
-        kfree(n->entry, sizeof(page_cache_entry_t));
-    }
-    cm_free(&n->map);
-    kfree(n, sizeof(radix_node_t));
-}
-
-static inline uint8_t rt_key_part(uint64_t k, int level) {
-    return (uint8_t) ((k >> (level * 8)) & 0xFF);
-}
-
-static int radix_init(radix_tree_t** out) {
-    if (!out) {
-        return -1;
-    }
-    radix_tree_t* t = (radix_tree_t*) kmalloc(sizeof(radix_tree_t));
-    if (!t) {
-        return -1;
-    }
-    t->root = NULL;
-    *out = t;
-    return 0;
-}
-
-static void radix_free(radix_tree_t* t) {
-    if (!t) {
-        return;
-    }
-    if (t->root) {
-        rt_free_node_recuregion_startive(t->root);
-    }
-    kfree(t, sizeof(radix_tree_t));
-}
-
-static page_cache_entry_t* radix_get_entry(radix_tree_t* t, uint64_t key) {
-    if (!t || !t->root) {
-        return NULL;
-    }
-    radix_node_t* n = t->root;
-    for (int level = 7; level > 0; --level) {
-        void* child = cm_find(&n->map, rt_key_part(key, level));
-        if (!child) {
-            return NULL;
-        }
-        n = (radix_node_t*) child;
-    }
-    return n->entry;
-}
-
-static int radix_set_entry(radix_tree_t* t, uint64_t key, page_cache_entry_t* entry) {
-    if (!t) {
-        return -1;
-    }
-    if (!t->root) {
-        t->root = rt_new_node();
-        if (!t->root) {
-            return -1;
-        }
-    }
-    radix_node_t* n = t->root;
-    for (int level = 7; level > 0; --level) {
-        uint8_t part = rt_key_part(key, level);
-        void** slot = cm_get_ref(&n->map, part);
-        if (!slot) {
-            return -1;
-        }
-        if (!*slot) {
-            radix_node_t* nn = rt_new_node();
-            if (!nn) {
-                return -1;
-            }
-            *slot = nn;
-        }
-        n = (radix_node_t*) (*slot);
-    }
-    if (n->entry) {
-        pmm_free_page((void*) n->entry->phys);
-        kfree(n->entry, sizeof(page_cache_entry_t));
-    }
-    n->entry = entry;
-    return 0;
-}
-
-static void radix_del_entry(radix_tree_t* t, uint64_t key) {
-    if (!t || !t->root) {
-        return;
-    }
-    radix_node_t* stack[9];
-    uint8_t part_stack[9];
-    radix_node_t* n = t->root;
-    int depth = 0;
-    stack[depth] = n;
-    for (int level = 7; level > 0; --level) {
-        uint8_t part = rt_key_part(key, level);
-        void* child = cm_find(&n->map, part);
-
-        if (!child) {
-            return;
-        }
-
-        n = (radix_node_t*) child;
-        stack[++depth] = n;
-        part_stack[depth] = part;
-    }
-    if (!n->entry) {
-        return;
-    }
-    pmm_free_page((void*) n->entry->phys);
-    kfree(n->entry, sizeof(page_cache_entry_t));
-    n->entry = NULL;
-    for (int i = depth; i > 0; --i) {
-        radix_node_t* cur = stack[i];
-        if (cur->entry) {
-            break;
-        }
-
-        if (cur->map.len == 0) {
-            radix_node_t* parent = stack[i - 1];
-            cm_del(&parent->map, part_stack[i]);
-            cm_free(&cur->map);
-            kfree(cur, sizeof(radix_node_t));
-        } else {
-            break;
-        }
-    }
-    if (t->root && t->root->entry == NULL && t->root->map.len == 0) {
-        cm_free(&t->root->map);
-        kfree(t->root, sizeof(radix_node_t));
-        t->root = NULL;
-    }
-}
-
-page_cache_t page_cache;
-
-void page_cache_init(void) {
-    page_cache.tree = NULL;
-    radix_init(&page_cache.tree);
-    page_cache.lru_head = page_cache.lru_tail = NULL;
-    page_cache.page_count = 0;
-    static spinlock_t initializer = SPINLOCK_INIT;
-    page_cache.lock = initializer;
-    spinlock_init(&page_cache.lock);
-}
-
-static void _lru_remove(page_cache_entry_t* entry) {
-    if (!entry) {
-        return;
-    }
-    if (entry->prev_lru) {
-        entry->prev_lru->next_lru = entry->next_lru;
-    }
-    if (entry->next_lru) {
-        entry->next_lru->prev_lru = entry->prev_lru;
-    }
-    if (page_cache.lru_head == entry) {
-        page_cache.lru_head = entry->next_lru;
-    }
-    if (page_cache.lru_tail == entry) {
-        page_cache.lru_tail = entry->prev_lru;
-    }
-    entry->prev_lru = entry->next_lru = NULL;
-}
-
-static void _lru_add_head(page_cache_entry_t* entry) {
-    entry->prev_lru = NULL;
-    entry->next_lru = page_cache.lru_head;
-    if (page_cache.lru_head) {
-        page_cache.lru_head->prev_lru = entry;
-    }
-    page_cache.lru_head = entry;
-    if (!page_cache.lru_tail) {
-        page_cache.lru_tail = entry;
-    }
-}
-
-void* page_cache_get(uint64_t idx) {
-    spinlock(&page_cache.lock);
-    page_cache_entry_t* entry = radix_get_entry(page_cache.tree, idx);
-    if (entry) {
-        entry->refcount++;
-        _lru_remove(entry);
-        _lru_add_head(entry);
-        spinlock_unlock(&page_cache.lock, true);
-        return (void*) entry->phys;
-    }
-    void* page = pmm_alloc_page();
-    if (!page) {
-        spinlock_unlock(&page_cache.lock, true);
-        return NULL;
-    }
-    entry = (page_cache_entry_t*) kmalloc(sizeof(page_cache_entry_t));
-    entry->phys = (uintptr_t) page;
-    entry->idx = idx;
-    entry->prev_lru = entry->next_lru = NULL;
-    entry->dirty = false;
-    entry->refcount = 1;
-    if (radix_set_entry(page_cache.tree, idx, entry) < 0) {
-        pmm_free_page(page);
-        kfree(entry, sizeof(page_cache_entry_t));
-        spinlock_unlock(&page_cache.lock, true);
-        return NULL;
-    }
-    _lru_add_head(entry);
-    page_cache.page_count++;
-    spinlock_unlock(&page_cache.lock, true);
-    return page;
-}
-
-void page_cache_mark_dirty(uint64_t idx) {
-    spinlock(&page_cache.lock);
-    page_cache_entry_t* entry = radix_get_entry(page_cache.tree, idx);
-    if (entry) {
-        entry->dirty = true;
-    }
-    spinlock_unlock(&page_cache.lock, true);
-}
-
-void page_cache_release(uint64_t idx) {
-    spinlock(&page_cache.lock);
-    page_cache_entry_t* entry = radix_get_entry(page_cache.tree, idx);
-    if (entry) {
-        if (entry->refcount > 0) {
-            entry->refcount--;
-        }
-    }
-    spinlock_unlock(&page_cache.lock, true);
-}
-
-/* evict one least-recently-used page if any. */
-int page_cache_evict_one(void) {
-    spinlock(&page_cache.lock);
-    page_cache_entry_t* victim = page_cache.lru_tail;
-    if (!victim) {
-        spinlock_unlock(&page_cache.lock, true);
+uint32_t pmm_count_free_of_order(uint32_t order) {
+    if (order > MAX_ORDER) {
         return 0;
     }
-    if (victim->refcount > 0) {
-        spinlock_unlock(&page_cache.lock, true);
-        return 0;
+
+    uint32_t count = 0;
+    spinlock(&buddy.lock);
+    struct page* curr = buddy.free_list[order];
+    while (curr) {
+        count++;
+        curr = curr->next;
     }
-    _lru_remove(victim);
-    radix_del_entry(page_cache.tree, victim->idx);
-    page_cache.page_count--;
-    spinlock_unlock(&page_cache.lock, true);
-    return 1;
+    spinlock_unlock(&buddy.lock, true);
+    return count;
 }
 
-void page_cache_remove(uint64_t idx) {
-    spinlock(&page_cache.lock);
-    page_cache_entry_t* entry = radix_get_entry(page_cache.tree, idx);
-    if (!entry) {
-        spinlock_unlock(&page_cache.lock, true);
-        return;
-    }
-    if (entry->refcount > 0) {
-        spinlock_unlock(&page_cache.lock, true);
-        return;
-    }
-    _lru_remove(entry);
-    radix_del_entry(page_cache.tree, idx);
-    page_cache.page_count--;
-    spinlock_unlock(&page_cache.lock, true);
+uintptr_t pmm_align_to_order(uintptr_t addr, uint32_t order) {
+    uintptr_t mask = (PAGE_SIZE << order) - 1;
+    return (addr + mask) & ~mask;
 }
 
-void page_cache_free_all(void) {
-    spinlock(&page_cache.lock);
-    if (page_cache.tree) {
-        radix_free(page_cache.tree);
-        page_cache.tree = NULL;
-    }
-    page_cache.lru_head = page_cache.lru_tail = NULL;
-    page_cache.page_count = 0;
-    spinlock_unlock(&page_cache.lock, true);
-}
-
-void log_page_info(struct page* page) {
-    log_address("pmm: page address: ", page->address);
-    log_uint("pmm: page order: ", page->order);
-    log_uint("pmm: page is_free: ", page->is_free);
-    log_address("pmm: page next: ", (uintptr_t) page->next);
-}
-
-void print_mem_info(void) {
-    log("Memory Info:\n", LIGHT_GRAY);
-    log("Total pages: ", LIGHT_GRAY);
-    log_uint("", buddy.total_pages);
-    log("\nFree pages: ", LIGHT_GRAY);
-    for (int i = 0; i <= MAX_ORDER; i++) {
-        log_uint("", (uint32_t) buddy.free_list[i]);
-        log(" ", LIGHT_GRAY);
-    }
-    log("\n", LIGHT_GRAY);
+bool pmm_check_alignment(uintptr_t addr, uint32_t order) {
+    uintptr_t mask = (PAGE_SIZE << order) - 1;
+    return (addr & mask) == 0;
 }

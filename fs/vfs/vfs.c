@@ -781,3 +781,19 @@ int vfs_truncate_path(char* path, uint64_t len) {
 int vfs_ioctl(struct vfs_node* node, unsigned long cmd, unsigned long arg) {
     return vfs_ctrl(node, cmd, arg);
 }
+
+struct linux_dirent;
+
+int vfs_getdents(struct vfs_node* node, linux_dirent_t* dirp, unsigned int count) {
+    if (node == NULL) {
+        log("vfs_getdents: node is NULL\n", RED);
+        return -1;
+    }
+
+    if (node->mountpoint->filesystem->op_table.getdents != NULL) {
+        return node->mountpoint->filesystem->op_table.getdents(node, dirp, count);
+    }
+
+    log("vfs_getdents: Filesystem type does not support getdents\n", RED);
+    return -1;
+}

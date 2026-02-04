@@ -104,7 +104,7 @@ static int procfs_write(struct vfs_node* node, unsigned char* buf, unsigned long
 }
 
 static void* procfs_mount(char* dev, char* path, int flags) {
-    log("procfs: mount called\n", 0x0F);
+
 
     if (!pfs.procfs_fs) {
         pfs.procfs_fs = kmalloc(sizeof(struct vfs_fs));

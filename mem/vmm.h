@@ -2,16 +2,12 @@
 #define VMM_H
 
 #include <stdint.h>
-
+#include "../task/sync/spinlock.h"
 #define PAGE_SIZE 4096
 #define RECURSIVE_PDE 1023
 
-typedef struct aslr_entry {
-    uintptr_t va;
-    size_t pages;
-    size_t align;
-    uint32_t flags;
-} aslr_entry_t;
+#define RECURSIVE_ADDR 0xFFC00000
+#define RECURSIVE_PT(pdi) ((uint32_t*) (RECURSIVE_ADDR + (pdi) * PAGE_SIZE))
 
 extern uint32_t* pg_dir;
 extern uint32_t* pg_tbls;
@@ -39,6 +35,7 @@ typedef struct vmm_class_config {
 typedef struct vmm_alloc_class {
     vmm_class_config_t config;
     uintptr_t current_ptr;
+    spinlock_t lock;
     struct vmm_alloc_class* next;
 } vmm_alloc_class_t;
 
@@ -99,4 +96,8 @@ void vmm_nuke_pagemap(vmm_region_t* region);
 int vmm_copy_frames(uint32_t* src_pt, uint32_t* dst_pt);
 int vmm_iterate_and_copy_page_tables(vmm_region_t* src, vmm_region_t* dst);
 vmm_region_t* vmm_copy_pagemap(vmm_region_t* src);
-#endif
+int vmm_is_mapped(vmm_region_t* region, uintptr_t va);
+int vmm_is_user_mapped(vmm_region_t* region, uintptr_t va);
+int vmm_is_kernel_mapped(vmm_region_t* region, uintptr_t va);
+
+#endif // VMM_H

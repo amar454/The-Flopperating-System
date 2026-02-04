@@ -1,6 +1,6 @@
 #ifndef VFS_H
 #define VFS_H
-
+#pragma once
 #include <stdint.h>
 #include <stddef.h>
 #include <stdatomic.h>
@@ -8,12 +8,14 @@
 #include "../../task/ipc/pipe.h"
 #define VFS_MAX_FILE_NAME 256
 
-#define VFS_FILE 0x0
-#define VFS_DIR 0x1
-#define VFS_DEV 0x2
-#define VFS_SYMLINK 0x3
-#define VFS_HIDDEN 0x4
-#define VFS_PIPE 0x5
+typedef enum vfs_node_type {
+    VFS_FILE = 0x0,
+    VFS_DIR = 0x1,
+    VFS_DEV = 0x2,
+    VFS_SYMLINK = 0x3,
+    VFS_HIDDEN = 0x4,
+    VFS_PIPE = 0x5
+} vfs_node_type_t;
 
 typedef enum vfs_mode {
     VFS_MODE_R = 0x1,
@@ -51,6 +53,13 @@ struct vfs_directory_entry {
     int type;
     struct vfs_directory_entry* next;
 };
+
+typedef struct linux_dirent {
+    unsigned long d_ino;
+    unsigned long d_off;
+    unsigned short d_reclen;
+    char d_name[];
+} linux_dirent_t;
 
 struct vfs_directory_list {
     struct vfs_directory_entry* head;
@@ -121,6 +130,7 @@ struct vfs_op_tbl {
     int (*truncate)(struct vfs_node*, uint64_t length);
     int (*ioctl)(struct vfs_node* node, unsigned long cmd, unsigned long arg);
     int (*link)(struct vfs_mountpoint*, char*, char*);
+    int (*getdents)(struct vfs_node*, linux_dirent_t*, unsigned int);
 };
 
 struct vfs_fs {
@@ -155,5 +165,6 @@ int vfs_rmdir(char* path);
 int vfs_rename(char* oldpath, char* newpath);
 struct vfs_directory_list* vfs_readdir_path(char* path);
 int vfs_ioctl(struct vfs_node* node, unsigned long cmd, unsigned long arg);
+int vfs_getdents(struct vfs_node* node, struct linux_dirent* dirp, unsigned int count);
 
 #endif

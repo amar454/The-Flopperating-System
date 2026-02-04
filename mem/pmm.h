@@ -20,7 +20,7 @@
 #define PMM_REGION_START(entry) (PMM_ALIGN((uintptr_t) (entry)->addr))
 #define PMM_REGION_END(entry) (((uintptr_t) (entry)->addr + (uintptr_t) (entry)->len) & ~(PAGE_SIZE - 1))
 #define PAGE_SIZE 4096
-#define ALIGN_UP(x, a) (((x) + ((a) -1)) & ~((a) -1))
+#define ALIGN_UP(x, a) (((x) + ((a) - 1)) & ~((a) - 1))
 
 struct page {
     uintptr_t address;
@@ -39,43 +39,8 @@ struct buddy_allocator {
     spinlock_t lock;
 };
 
-typedef struct page_cache_entry {
-    uintptr_t phys;
-    uint64_t idx;
-    struct page_cache_entry* prev_lru;
-    struct page_cache_entry* next_lru;
-    bool dirty;
-    uint32_t refcount;
-} page_cache_entry_t;
-
-typedef struct {
-    uint8_t* keys;
-    void** vals;
-    uint8_t* state; /* 0=empty,1=used,2=deleted */
-    size_t cap;
-    size_t len;
-} child_map_t;
-
-typedef struct radix_node {
-    page_cache_entry_t* entry;
-    child_map_t map;
-} radix_node_t;
-
-typedef struct {
-    radix_node_t* root;
-} radix_tree_t;
-
-typedef struct {
-    radix_tree_t* tree;
-    page_cache_entry_t* lru_head;
-    page_cache_entry_t* lru_tail;
-    spinlock_t lock;
-    uint64_t page_count;
-} page_cache_t;
-
 extern uint32_t* pg_dir;
 extern uint32_t* pg_tbls;
-extern page_cache_t page_cache;
 extern struct buddy_allocator buddy;
 
 void pmm_init(multiboot_info_t* mb_info);
@@ -89,4 +54,12 @@ struct page* phys_to_page_index(uintptr_t addr);
 uint32_t page_index(uintptr_t addr);
 void pmm_copy_page(void* dst, void* src);
 int pmm_is_valid_addr(uintptr_t addr);
+uintptr_t pmm_get_buddy_address(uintptr_t addr, uint32_t order);
+bool pmm_is_primary_buddy(uintptr_t addr, uint32_t order);
+size_t pmm_get_block_size(uint32_t order);
+bool pmm_is_page_free(uintptr_t addr);
+uint32_t pmm_get_page_order(uintptr_t addr);
+uint32_t pmm_count_free_of_order(uint32_t order);
+uintptr_t pmm_align_to_order(uintptr_t addr, uint32_t order);
+bool pmm_check_alignment(uintptr_t addr, uint32_t order);
 #endif

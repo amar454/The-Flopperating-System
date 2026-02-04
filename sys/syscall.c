@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License along with The
 #include "../mem/pmm.h"
 #include "../mem/paging.h"
 #include "../mem/vmm.h"
-#include "../fs/vfs/vfs.h"
 #include "../lib/logging.h"
 #include "../lib/str.h"
 #include "../lib/refcount.h"
@@ -30,7 +29,6 @@ You should have received a copy of the GNU General Public License along with The
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-
 #include "syscall.h"
 
 // perform the syscall software interrupt
@@ -529,10 +527,60 @@ int sys_mmap(struct syscall_args* args) {
     return map_start_va;
 }
 
-// mremap; returns virtual address or -1
-int sys_mremap(struct syscall_args* args) {
+static int sys_internal_mremap_validate(struct syscall_args* args) {
     if (!args->a1 || !args->a2 || !args->a3 || !args->a4) {
         log("sys: wrong args passed to sys_mremap", RED);
+        return -1;
+    }
+
+    if (args->a5) {
+        log("sys: invalid args passed to sys_mremap", RED);
+        return -1;
+    }
+
+    return 0;
+}
+
+static uintptr_t sys_internal_mremap_shrink(vmm_region_t* region, uintptr_t addr, uint32_t old_len, uint32_t new_len) {
+    uintptr_t shrink_start = addr + new_len;
+    uintptr_t shrink_end = addr + old_len;
+
+    // assuming sys_mmap_internal_rb is available in this context
+    sys_mmap_internal_rb(region, shrink_start, shrink_end);
+
+    return addr;
+}
+
+static uintptr_t
+sys_internal_mremap_expand(vmm_region_t* region, uintptr_t addr, uint32_t old_len, uint32_t new_len, uint32_t flags) {
+    uintptr_t expand_start = addr + old_len;
+    uintptr_t expand_end = addr + new_len;
+
+    for (uintptr_t va = expand_start; va < expand_end; va += PAGE_SIZE) {
+        void* phys_page = pmm_alloc_page();
+
+        // allocation failed, rollback
+        if (!phys_page) {
+            sys_mmap_internal_rb(region, expand_start, va);
+            return -1;
+        }
+
+        // zero out the page
+        uint8_t* bp = (uint8_t*) phys_page;
+        for (size_t i = 0; i < PAGE_SIZE; i++) {
+            bp[i] = 0;
+        }
+
+        // map the page
+        vmm_map(region, va, (uintptr_t) phys_page, flags);
+    }
+
+    return addr;
+}
+
+// mremap; returns virtual address or -1
+int sys_mremap(struct syscall_args* args) {
+    if (sys_internal_mremap_validate(args) < 0) {
         return -1;
     }
 
@@ -540,11 +588,6 @@ int sys_mremap(struct syscall_args* args) {
     uint32_t old_len = (uint32_t) args->a2;
     uint32_t new_len = (uint32_t) args->a3;
     uint32_t flags = (uint32_t) args->a4;
-
-    if (args->a5) {
-        log("sys: invalid args passed to sys_mremap", RED);
-        return -1;
-    }
 
     if (old_len == 0 || new_len == 0) {
         return -1;
@@ -554,7 +597,6 @@ int sys_mremap(struct syscall_args* args) {
     old_len = ALIGN_UP(old_len, PAGE_SIZE);
     new_len = ALIGN_UP(new_len, PAGE_SIZE);
 
-    // fetch current process and vm region
     process_t* proc = proc_get_current();
     if (!proc || !proc->region) {
         return -1;
@@ -562,39 +604,15 @@ int sys_mremap(struct syscall_args* args) {
 
     vmm_region_t* region = proc->region;
 
-    // if same length, nothing to do
     if (new_len == old_len) {
         return addr;
-    } else if (new_len < old_len) {
-        // shrink
-        uintptr_t shrink_start = addr + new_len;
-        uintptr_t shrink_end = addr + old_len;
-        sys_mmap_internal_rb(region, shrink_start, shrink_end);
-        return addr;
-    } else {
-        // expand
-        uintptr_t expand_start = addr + old_len;
-        uintptr_t expand_end = addr + new_len;
-
-        // iterate through each page and allocate + map
-        for (uintptr_t va = expand_start; va < expand_end; va += PAGE_SIZE) {
-            void* phys_page = pmm_alloc_page();
-            // allocation failed, rollback and return -1
-            if (!phys_page) {
-                sys_mmap_internal_rb(region, expand_start, va);
-                return -1;
-            }
-            // zero out the page
-            uint8_t* bp = (uint8_t*) phys_page;
-            for (size_t i = 0; i < PAGE_SIZE; i++) {
-                bp[i] = 0;
-            }
-            // map the page
-            vmm_map(region, va, (uintptr_t) phys_page, flags);
-        }
-        // return the starting virtual address
-        return addr;
     }
+
+    if (new_len < old_len) {
+        return sys_internal_mremap_shrink(region, addr, old_len, new_len);
+    }
+
+    return sys_internal_mremap_expand(region, addr, old_len, new_len, flags);
 }
 
 // validate a memory mapping for munmap
@@ -1052,6 +1070,8 @@ int sys_chdir(struct syscall_args* args) {
 int sys_reboot(struct syscall_args* args) {
     (void) args;
     acpi_qemu_power_off();
+
+    __builtin_unreachable();
     return 0;
 }
 
@@ -1069,15 +1089,15 @@ int sys_pipe(struct syscall_args* args) {
         return -1;
     }
 
-    pipe_t* p = kmalloc(sizeof(pipe_t));
-    if (!p) {
+    pipe_t* pipe = kmalloc(sizeof(pipe_t));
+    if (!pipe) {
         return -1;
     }
-    pipe_init(p);
+    pipe_init(pipe);
 
     process_t* proc = proc_get_current();
     if (!proc) {
-        kfree(p, sizeof(pipe_t));
+        kfree(pipe, sizeof(pipe_t));
         return -1;
     }
 
@@ -1095,12 +1115,12 @@ int sys_pipe(struct syscall_args* args) {
     }
 
     if (read_fd < 0 || write_fd < 0) {
-        kfree(p, sizeof(pipe_t));
+        kfree(pipe, sizeof(pipe_t));
         return -1;
     }
 
-    proc->fds[read_fd].pipe = p;
-    proc->fds[write_fd].pipe = p;
+    proc->fds[read_fd].pipe = pipe;
+    proc->fds[write_fd].pipe = pipe;
 
     pipefd[0] = read_fd;
     pipefd[1] = write_fd;
@@ -1371,6 +1391,44 @@ int sys_mprotect(struct syscall_args* args) {
     return 0;
 }
 
+int sys_getdents(struct syscall_args* args) {
+    if (!args || !args->a1 || !args->a2 || !args->a3) {
+        log("sys: invalid args passed to sys_mprotect", RED);
+        return -1;
+    }
+
+    int fd = args->a1;
+    linux_dirent_t* dirp = (linux_dirent_t*) args->a2;
+    unsigned int count = args->a3;
+
+    struct vfs_node* node = proc_get_current()->fds[fd].node;
+
+    if (!node) {
+        return -1;
+    }
+
+    return vfs_getdents(node, dirp, count);
+}
+
+extern pid_t proc_waitpid(pid_t pid, int* status, int options);
+
+int sys_waitpid(struct syscall_args* args) {
+    if (!args) {
+        log("sys: invalid args passed to sys_waitpid", RED);
+        return -1;
+    }
+
+    pid_t pid = (pid_t) args->a1;
+    int* status = (int*) args->a2;
+    int options = (int) args->a3;
+
+    if (status && !vmm_is_user_mapped(vmm_get_current(), (uintptr_t) status)) {
+        return -1;
+    }
+
+    return proc_waitpid(pid, status, options);
+}
+
 syscall_function_pointer* syscall_dispatch_table = NULL;
 
 void syscall_init() {
@@ -1416,6 +1474,8 @@ void syscall_init() {
                                                       [SYSCALL_GETCWD] = sys_getcwd,
                                                       [SYSCALL_MPROTECT] = sys_mprotect,
                                                       [SYSCALL_MREMAP] = sys_mremap,
+                                                      [SYSCALL_GETDENTS] = sys_getdents,
+                                                      [SYSCALL_WAITPID] = sys_waitpid,
                                                       [SYSCALL_NUM] = NULL};
 
     syscall_dispatch_table = sys_init_tbl;
@@ -1426,6 +1486,10 @@ void syscall_init() {
 // called by the assembly syscall_routine when handling the 0x80 software interrupt
 int c_syscall_routine(uint32_t num, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5) {
     struct syscall_args args = {.a1 = a1, .a2 = a2, .a3 = a3, .a4 = a4, .a5 = a5};
-
-    return syscall_dispatch_table[num](&args);
+    if (num == SYSCALL_NUM) {
+        log("syscall: called invalid syscall index", RED);
+        return -1;
+    } else {
+        return syscall_dispatch_table[num](&args);
+    }
 }

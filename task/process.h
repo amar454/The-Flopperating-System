@@ -113,6 +113,11 @@ typedef struct process {
     spinlock_t sig_lock;
 } process_t;
 
+typedef enum wait_options {
+    WNOHANG = 1,
+    WUNTRACED = 2
+} wait_options_t;
+
 process_t* proc_get_current();
 int proc_create_init_process();
 pid_t proc_getpid(process_t* process);
@@ -125,4 +130,7 @@ int proc_exit(process_t* process, int status);
 pid_t proc_dup(pid_t pid);
 process_t* proc_get_process_by_pid(pid_t pid);
 int proc_exit_all_threads(process_t* process);
+static int proc_clean(process_t* process);
+pid_t proc_waitpid(pid_t pid, int* status, int options);
+
 #endif

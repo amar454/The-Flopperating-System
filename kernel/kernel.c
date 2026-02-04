@@ -227,7 +227,7 @@ void draw_floppaos_logo() {
 }
 
 int kmain(uint32_t magic, multiboot_info_t* mb_info) {
-    init(mb_info);
+    init(mb_info, default_config);
     echo("The Flopperating System has finished kernel booting! Now we do nothing.\n", GREEN);
 
     draw_floppaos_logo();

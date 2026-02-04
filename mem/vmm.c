@@ -10,6 +10,7 @@ The Flopperating System is distributed in the hope that it will be useful, but W
 
 You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
+[DESCRIPTION] - virtual memory management and interface
 */
 #include <stdint.h>
 #include "pmm.h"
@@ -80,7 +81,7 @@ void vmm_free(vmm_region_t* region, uintptr_t va, size_t pages) {
 int vmm_map(vmm_region_t* region, uintptr_t va, uintptr_t pa, uint32_t flags) {
     uint32_t pdi = pd_index(va);
     uint32_t pti = pt_index(va);
-    
+
     // allocate a new pt if needed
     if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
         uintptr_t pt_phys = (uintptr_t) pmm_alloc_page();
@@ -90,7 +91,7 @@ int vmm_map(vmm_region_t* region, uintptr_t va, uintptr_t pa, uint32_t flags) {
         region->pg_dir[pdi] = (pt_phys & PAGE_MASK) | PAGE_PRESENT | PAGE_RW | PAGE_USER;
         flop_memset(RECURSIVE_PT(pdi), 0, PAGE_SIZE);
     }
-    
+
     uint32_t* pt = RECURSIVE_PT(pdi);
     pt[pti] = (pa & PAGE_MASK) | flags | PAGE_PRESENT;
     invlpg((void*) va);
@@ -108,6 +109,81 @@ int vmm_unmap(vmm_region_t* region, uintptr_t va) {
     pt[pti] = 0;
     invlpg((void*) va);
     return 0;
+}
+
+// Check if a virtual address is simply present in the page tables
+int vmm_is_mapped(vmm_region_t* region, uintptr_t va) {
+    if (!region) {
+        return 0;
+    }
+
+    uint32_t pdi = pd_index(va);
+    uint32_t pti = pt_index(va);
+
+    if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    uint32_t* pt = RECURSIVE_PT(pdi);
+    if (!(pt[pti] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+int vmm_is_user_mapped(vmm_region_t* region, uintptr_t va) {
+    if (!region) {
+        return 0;
+    }
+
+    uint32_t pdi = pd_index(va);
+    uint32_t pti = pt_index(va);
+
+    if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    if (!(region->pg_dir[pdi] & PAGE_USER)) {
+        return 0;
+    }
+
+    uint32_t* pt = RECURSIVE_PT(pdi);
+
+    if (!(pt[pti] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    if (!(pt[pti] & PAGE_USER)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+int vmm_is_kernel_mapped(vmm_region_t* region, uintptr_t va) {
+    if (!region) {
+        return 0;
+    }
+
+    uint32_t pdi = pd_index(va);
+    uint32_t pti = pt_index(va);
+
+    if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    if (!(region->pg_dir[pdi] & PAGE_USER)) {
+        return 1;
+    }
+
+    uint32_t* pt = RECURSIVE_PT(pdi);
+
+    if (!(pt[pti] & PAGE_PRESENT)) {
+        return 0;
+    }
+
+    return !(pt[pti] & PAGE_USER);
 }
 
 // resolve a virtual address to a physical address
@@ -451,10 +527,6 @@ int vmm_map_shared(
 
 int vmm_identity_map(vmm_region_t* region, uintptr_t base, size_t pages, uint32_t flags) {
     return vmm_map_range(region, base, base, pages, flags);
-}
-
-int vmm_is_mapped(vmm_region_t* region, uintptr_t va) {
-    return vmm_resolve(region, va) != 0;
 }
 
 size_t vmm_count_mapped(vmm_region_t* region) {
@@ -801,22 +873,116 @@ uintptr_t vmm_duplicate_page(vmm_region_t* region, uintptr_t va) {
     return new_pa;
 }
 
+int vmm_verify_buffer(vmm_region_t* region, uintptr_t addr, size_t size) {
+    if (size == 0) {
+        return 0;
+    }
+
+    uintptr_t start = addr;
+    uintptr_t end = addr + size;
+
+    if (end < start) {
+        return -1;
+    }
+
+    uintptr_t current_page = start & PAGE_MASK;
+
+    uintptr_t last_page = (end - 1) & PAGE_MASK;
+
+    for (uintptr_t pg = current_page; pg <= last_page; pg += PAGE_SIZE) {
+        if (!vmm_is_user_mapped(region, pg)) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int vmm_copy_from_user(void* kdest, const void* usrc, size_t len) {
+    if (vmm_verify_buffer(vmm_get_current(), (uintptr_t) usrc, len) != 0) {
+        return -1;
+    }
+
+    flop_memcpy(kdest, usrc, len);
+    return 0;
+}
+
+int vmm_copy_to_user(void* udest, const void* ksrc, size_t len) {
+    if (vmm_verify_buffer(vmm_get_current(), (uintptr_t) udest, len) != 0) {
+        return -1;
+    }
+
+    flop_memcpy(udest, ksrc, len);
+    return 0;
+}
+
+int vmm_strncpy_from_user(char* kdest, const char* usrc, size_t max_len) {
+    size_t n = 0;
+    uintptr_t curr_addr = (uintptr_t) usrc;
+
+    while (n < max_len) {
+        if ((curr_addr & 0xFFF) == 0 || n == 0) {
+            if (!vmm_is_user_mapped(vmm_get_current(), curr_addr)) {
+                return -1;
+            }
+        }
+
+        char c = *(char*) curr_addr;
+        kdest[n] = c;
+
+        if (c == '\0') {
+            return n;
+        }
+
+        n++;
+        curr_addr++;
+    }
+
+    if (max_len > 0) {
+        kdest[max_len - 1] = '\0';
+    }
+
+    return n;
+}
+
 void vmm_flush_tlb(void) {
     asm volatile("mov %%cr3, %%eax\n"
                  "mov %%eax, %%cr3" ::
                      : "eax", "memory");
 }
 
-static bool _vmm_validator_dma(uintptr_t base, size_t size) {
+static bool vmm_internal_validator_dma(uintptr_t base, size_t size) {
     if ((base + size) > 0x01000000) {
         return false;
     }
     return true;
 }
 
-static bool _vmm_validator_kernel(uintptr_t base, size_t size) {
+static bool vmm_internal_validator_kernel(uintptr_t base, size_t size) {
     if (base < (USER_SPACE_END + 1)) {
         return false;
+    }
+    return true;
+}
+
+static bool _vmm_is_region_free(vmm_region_t* region, uintptr_t start, size_t pages) {
+    for (size_t i = 0; i < pages; i++) {
+        uintptr_t addr = start + (i * PAGE_SIZE);
+        uint32_t pdi = pd_index(addr);
+
+        if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
+            size_t skipped = (PAGE_TABLE_SIZE - pt_index(addr));
+            if (skipped > (pages - i)) {
+                skipped = (pages - i);
+            }
+            i += (skipped - 1);
+            continue;
+        }
+
+        uint32_t* pt = RECURSIVE_PT(pdi);
+        if (pt[pt_index(addr)] & PAGE_PRESENT) {
+            return false;
+        }
     }
     return true;
 }
@@ -824,41 +990,38 @@ static bool _vmm_validator_kernel(uintptr_t base, size_t size) {
 void vmm_classes_init(vmm_region_t* region) {
     region->class_list = NULL;
 
-    vmm_class_config_t k_conf = {.type = VM_CLASS_KERNEL,
-                                 .name = "Kernel",
-                                 .start = 0xC0000000,
-                                 .end = 0xFFFFFFFF,
-                                 .flags = PAGE_PRESENT | PAGE_RW,
-                                 .align = PAGE_SIZE,
-                                 .validator = _vmm_validator_kernel};
-    vmm_class_register(region, &k_conf);
+    vmm_class_config_t configs[] = {{.type = VM_CLASS_KERNEL,
+                                     .name = "kern",
+                                     .start = 0xC0000000,
+                                     .end = 0xFFFFFFFF,
+                                     .flags = PAGE_PRESENT | PAGE_RW,
+                                     .align = PAGE_SIZE,
+                                     .validator = vmm_internal_validator_kernel},
+                                    {.type = VM_CLASS_USER,
+                                     .name = "usr",
+                                     .start = USER_SPACE_START,
+                                     .end = USER_SPACE_END,
+                                     .flags = PAGE_PRESENT | PAGE_RW | PAGE_USER,
+                                     .align = PAGE_SIZE,
+                                     .validator = NULL},
+                                    {.type = VM_CLASS_DMA,
+                                     .name = "dma",
+                                     .start = 0x1000,
+                                     .end = 0x01000000,
+                                     .flags = PAGE_PRESENT | PAGE_RW,
+                                     .align = 0x10000,
+                                     .validator = vmm_internal_validator_dma},
+                                    {.type = VM_CLASS_MMIO,
+                                     .name = "mmio",
+                                     .start = 0xF0000000,
+                                     .end = 0xF8000000,
+                                     .flags = PAGE_PRESENT | PAGE_RW,
+                                     .align = PAGE_SIZE,
+                                     .validator = NULL}};
 
-    vmm_class_config_t u_conf = {.type = VM_CLASS_USER,
-                                 .name = "User",
-                                 .start = USER_SPACE_START,
-                                 .end = USER_SPACE_END,
-                                 .flags = PAGE_PRESENT | PAGE_RW | PAGE_USER,
-                                 .align = PAGE_SIZE,
-                                 .validator = NULL};
-    vmm_class_register(region, &u_conf);
-
-    vmm_class_config_t dma_conf = {.type = VM_CLASS_DMA,
-                                   .name = "DMA",
-                                   .start = 0x1000,
-                                   .end = 0x01000000,
-                                   .flags = PAGE_PRESENT | PAGE_RW,
-                                   .align = 0x10000,
-                                   .validator = _vmm_validator_dma};
-    vmm_class_register(region, &dma_conf);
-
-    vmm_class_config_t mmio_conf = {.type = VM_CLASS_MMIO,
-                                    .name = "MMIO",
-                                    .start = 0xF0000000,
-                                    .end = 0xF8000000,
-                                    .flags = PAGE_PRESENT | PAGE_RW,
-                                    .align = PAGE_SIZE,
-                                    .validator = NULL};
-    vmm_class_register(region, &mmio_conf);
+    for (int i = 0; i < 4; i++) {
+        vmm_class_register(region, &configs[i]);
+    }
 }
 
 int vmm_class_register(vmm_region_t* region, vmm_class_config_t* config) {
@@ -873,6 +1036,7 @@ int vmm_class_register(vmm_region_t* region, vmm_class_config_t* config) {
 
     flop_memcpy(&new_class->config, config, sizeof(vmm_class_config_t));
     new_class->current_ptr = config->start;
+    spinlock_init(&new_class->lock);
 
     new_class->next = region->class_list;
     region->class_list = new_class;
@@ -907,24 +1071,24 @@ uintptr_t vmm_class_alloc(vmm_region_t* region, vm_class_type_t type, size_t pag
         return 0;
     }
 
+    spinlock(&cls->lock);
+
     size_t size = pages * PAGE_SIZE;
     uintptr_t ptr = cls->current_ptr;
 
     if (cls->config.align > PAGE_SIZE) {
-        if ((ptr & (cls->config.align - 1)) != 0) {
-            ptr = (ptr + cls->config.align - 1) & ~(cls->config.align - 1);
-        }
+        ptr = (ptr + cls->config.align - 1) & ~(cls->config.align - 1);
     }
 
-    uintptr_t start_of_search = ptr;
+    uintptr_t start_search = ptr;
     bool wrapped = false;
 
     while (true) {
         if (ptr + size > cls->config.end) {
             if (wrapped) {
+                spinlock_unlock(&cls->lock, true);
                 return 0;
             }
-
             ptr = cls->config.start;
             if (cls->config.align > PAGE_SIZE) {
                 ptr = (ptr + cls->config.align - 1) & ~(cls->config.align - 1);
@@ -933,7 +1097,8 @@ uintptr_t vmm_class_alloc(vmm_region_t* region, vm_class_type_t type, size_t pag
             continue;
         }
 
-        if (wrapped && ptr >= start_of_search) {
+        if (wrapped && ptr >= start_search) {
+            spinlock_unlock(&cls->lock, true);
             return 0;
         }
 
@@ -942,25 +1107,19 @@ uintptr_t vmm_class_alloc(vmm_region_t* region, vm_class_type_t type, size_t pag
             continue;
         }
 
-        bool is_free = true;
-        for (size_t i = 0; i < pages; i++) {
-            if (vmm_resolve(region, ptr + i * PAGE_SIZE) != 0) {
-                is_free = false;
-                break;
-            }
-        }
-
-        if (is_free) {
+        if (_vmm_is_region_free(region, ptr, pages)) {
             for (size_t i = 0; i < pages; i++) {
                 uintptr_t pa = (uintptr_t) pmm_alloc_page();
                 if (!pa) {
                     vmm_unmap_range(region, ptr, i);
+                    spinlock_unlock(&cls->lock, true);
                     return 0;
                 }
                 vmm_map(region, ptr + i * PAGE_SIZE, pa, cls->config.flags);
             }
 
             cls->current_ptr = ptr + size;
+            spinlock_unlock(&cls->lock, true);
             return ptr;
         }
 

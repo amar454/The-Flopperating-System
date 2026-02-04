@@ -96,7 +96,12 @@ int sched_init_kernel_worker_pool(void);
 
 void sched_init(void) {
     sched.idle_thread = sched_internal_init_thread(idle_thread_loop, 0, "idle", 0, NULL);
+    // idle thread must be lowest class
+    sched.idle_thread->cls = SCHED_CLASS_IDLE;
+
     sched.stealer_thread = sched_internal_init_thread(stealer_thread_entry, 0, "reaper", 0, NULL);
+    sched.stealer_thread->cls = SCHED_CLASS_REALTIME;
+
     sched_thread_list_add(sched.idle_thread, &sched.ready_queue);
 
     log("sched: init - ok\n", GREEN);
@@ -267,6 +272,10 @@ sched_internal_init_thread(void (*entry)(void), unsigned priority, char* name, i
     this_thread->context.ebp = 0;
     this_thread->context.eip = (uint32_t) entry;
 
+    // by default we assign the normal class
+    // this can be changed later or by the specific create function
+    this_thread->cls = SCHED_CLASS_NORMAL;
+
     if (sched_init_thread_kernel_or_user_list_insert(this_thread, process, user) < 0) {
         log("sched: thread kernel/user assignment failed\n", RED);
         kfree(this_thread->kernel_stack, 4096);
@@ -308,6 +317,9 @@ thread_t* sched_create_user_thread(void (*entry)(void), unsigned priority, char*
         log("sched: internal user thread init failed\n", RED);
         return NULL;
     }
+
+    // ensure user threads are in the normal class
+    new_thread->cls = SCHED_CLASS_NORMAL;
 
     uint32_t stack_index = sched_internal_fetch_next_stack_index(process);
     uintptr_t user_stack_top = sched_internal_alloc_user_stack(process, stack_index);
@@ -354,6 +366,11 @@ void sched_thread_list_add(thread_t* thread, thread_list_t* list) {
 
 thread_t* sched_create_kernel_thread(void (*entry)(void), unsigned priority, char* name) {
     thread_t* new_thread = sched_internal_init_thread((void*) entry, priority, name, 0, NULL);
+
+    // kernel threads are critical so we put them in realtime class
+    // NOTE: this might change
+    new_thread->cls = SCHED_CLASS_REALTIME;
+
     log("sched: kernel thread created", GREEN);
     sched_thread_list_add(new_thread, &sched.kernel_threads);
     return new_thread;
@@ -366,7 +383,11 @@ void sched_boost_starved_threads(thread_list_t* list) {
 
     for (thread_t* t = list->head; t; t = t->next) {
         t->time_since_last_run++;
-        if (t->time_since_last_run > STARVATION_THRESHOLD && t->priority.effective < MAX_PRIORITY) {
+
+        // we only boost normal threads. realtime threads are already top priority
+        // and idle threads shouldn't be boosted randomly.
+        if (t->cls == SCHED_CLASS_NORMAL && t->time_since_last_run > STARVATION_THRESHOLD &&
+            t->priority.effective < MAX_PRIORITY) {
             t->priority.effective += BOOST_AMOUNT;
         }
     }
@@ -382,7 +403,24 @@ void sched_find_best_thread_iterate(thread_list_t* list,
     thread_t* prev = NULL;
 
     while (iter) {
-        if (!*out_best || iter->priority.effective > (*out_best)->priority.effective) {
+        bool better = false;
+
+        if (!*out_best) {
+            better = true;
+        } else {
+            // here is where we check the class first
+            // realtime (0) is better than normal (1) is better than idle (2).
+            if (iter->cls < (*out_best)->cls) {
+                better = true;
+            } else if (iter->cls == (*out_best)->cls) {
+                // if the classes are the same, we fall back to priority
+                if (iter->priority.effective > (*out_best)->priority.effective) {
+                    better = true;
+                }
+            }
+        }
+
+        if (better) {
             *out_best = iter;
             *out_prev_best = prev;
         }
@@ -431,7 +469,21 @@ static void sched_unlink_thread(thread_list_t* list, thread_t* thread, thread_t*
 }
 
 static inline void sched_assign_time_slice(thread_t* t) {
-    t->time_slice = t->priority.base ? t->priority.base : 1;
+    // assign time slice based on the thread class
+    // realtime threads get the most time, idle get the least.
+    switch (t->cls) {
+        case SCHED_CLASS_REALTIME:
+            t->time_slice = TIMESLICE_REALTIME;
+            break;
+        case SCHED_CLASS_IDLE:
+            t->time_slice = TIMESLICE_IDLE;
+            break;
+        case SCHED_CLASS_NORMAL:
+        default:
+            // normal threads use the base priority to calculate slice
+            t->time_slice = t->priority.base ? t->priority.base : TIMESLICE_NORMAL;
+            break;
+    }
 }
 
 static thread_t* sched_select_by_time_slice(thread_list_t* list) {
@@ -466,7 +518,7 @@ static thread_t* sched_select_idle_if_needed(thread_t* candidate) {
     }
 
     thread_t* idle = sched.idle_thread;
-    idle->time_slice = idle->priority.base ? idle->priority.base : 1;
+    idle->time_slice = TIMESLICE_IDLE;
     return idle;
 }
 
@@ -482,7 +534,11 @@ static void sched_determine_and_switch(thread_t* next) {
     thread_t* prev = current_thread;
     current_thread = next;
     current_process = next->process;
-
+    if (next->process != NULL) {
+        load_pd(next->process->region->pg_dir);
+    } else {
+        load_pd(kernel_region->pg_dir);
+    }
     context_switch(&prev->context, &next->context);
 }
 
@@ -605,4 +661,10 @@ void sched_tick(void) {
     }
 
     spinlock_unlock(&sched.sleep_queue.lock, true);
+}
+
+void sched_set_class(thread_t* thread, sched_class_t cls) {
+    if (thread) {
+        thread->cls = cls;
+    }
 }

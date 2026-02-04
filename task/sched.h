@@ -35,6 +35,15 @@ typedef enum thread_state {
     THREAD_BLOCKED
 } thread_state_t;
 
+// scheduling classes determine the hierarchy of the thread.
+// threads in a higher class (like realtime) will always
+// pre-empt threads in a lower class (like normal).
+typedef enum sched_class {
+    SCHED_CLASS_REALTIME,
+    SCHED_CLASS_NORMAL,
+    SCHED_CLASS_IDLE
+} sched_class_t;
+
 typedef struct thread thread_t;
 
 typedef struct thread_priority {
@@ -45,6 +54,11 @@ typedef struct thread_priority {
 #define STARVATION_THRESHOLD 1000
 #define BOOST_AMOUNT 5
 #define MAX_PRIORITY 255
+
+// time slice configuration for different classes
+#define TIMESLICE_REALTIME 100
+#define TIMESLICE_NORMAL 20
+#define TIMESLICE_IDLE 1
 
 typedef struct thread_list {
     thread_t* head;
@@ -77,6 +91,10 @@ typedef struct thread {
     thread_t* priority_inheritance_owner;
     thread_t* ts_next;
     void* blocked_lock;
+
+    // the class this thread belongs to.
+    // the scheduler checks this before checking priority.
+    sched_class_t cls;
 
     // priority is the base priority assigned when the thread is created
     // if the thread is starved a priority boost will be added to the effective priority
@@ -125,13 +143,18 @@ thread_t* sched_create_kernel_thread(void (*entry)(void), unsigned priority, cha
 
 // use this for everything but the ready queue.
 void sched_thread_list_add(thread_t* thread, thread_list_t* list);
+// creating a user thread defaults to SCHED_CLASS_NORMAL
 thread_t* sched_create_user_thread(void (*entry)(void), unsigned priority, char* name, process_t* process);
+
 void sched_init(void);
 void sched_enqueue(thread_list_t* list, thread_t* thread);
 thread_t* sched_dequeue(thread_list_t* list);
 thread_t* sched_remove(thread_list_t* list, thread_t* target);
 void sched_schedule(void);
 void sched_yield(void);
+
+// helper to manually set a thread's class
+void sched_set_class(thread_t* thread, sched_class_t cls);
 
 extern void sched_tick(void);
 #endif // SCHED_H

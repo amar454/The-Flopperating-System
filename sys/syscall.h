@@ -3,8 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#pragma once
 #include "../task/sync/spinlock.h"
+#include "../fs/vfs/vfs.h"
 
 struct syscall_args {
     uint32_t a1;
@@ -61,7 +61,9 @@ typedef enum syscall_num {
     SYSCALL_GETCWD = 39,
     SYSCALL_MPROTECT = 40,
     SYSCALL_MREMAP = 41,
-    SYSCALL_NUM = 42
+    SYSCALL_GETDENTS = 42,
+    SYSCALL_WAITPID = 43,
+    SYSCALL_NUM = 44
 } syscall_num_t;
 
 typedef struct syscall_table {
@@ -107,6 +109,8 @@ typedef struct syscall_table {
     int (*sys_getpid)(struct syscall_args* args);
     int (*sys_clone)(struct syscall_args* args);
     int (*sys_getsid)(struct syscall_args* args);
+    int (*sys_waitpid)(struct syscall_args* args);
+    int (*sys_getdents)(struct syscall_args* args);
 } syscall_table_t;
 
 int syscall(syscall_num_t num, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);
@@ -236,6 +240,12 @@ int sys_mprotect(struct syscall_args* args);
 
 // 41: mremap(addr, old_len, new_len, flags)
 int sys_mremap(struct syscall_args* args);
+
+// 42: getdents(fd, buf, count)
+int sys_getdents(struct syscall_args* args);
+
+// 43: waitpid(pid, status, options)
+int sys_waitpid(struct syscall_args* args);
 
 void syscall_init();
 
