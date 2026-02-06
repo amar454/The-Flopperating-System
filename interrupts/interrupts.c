@@ -42,20 +42,7 @@ static inline void pic_eoi(uint8_t irq) {
     outb(PIC1_COMMAND, PIC_EOI);
 }
 
-#define PIT_FREQUENCY 100
-#define IDT_FLAGS 0x8E
-
 extern void* isr_stub_table[256];
-
-typedef enum int_type {
-    INT_TYPE_DIVIDE_BY_ZERO = 0,
-    INT_TYPE_INVALID_OPCODE = 6,
-    INT_TYPE_GPF = 13,
-    INT_TYPE_PAGE_FAULT = 14,
-    INT_TYPE_PIT = 32,
-    INT_TYPE_KEYBOARD = 33,
-    INT_TYPE_SYSCALL = 80,
-} int_type_t;
 
 extern int c_syscall_routine(uint32_t num, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5);
 
@@ -71,11 +58,7 @@ void isr_dispatch(int_frame_t* frame) {
             log("isr13: GPF\n", RED);
             break;
         case INT_TYPE_PAGE_FAULT: {
-            uint32_t cr2;
-            __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
-            log("isr14: page fault\n", RED);
-            log_uint("CR2: ", cr2);
-            log_uint("err code: ", frame->err_code);
+            PAGE_FAULT_HANDLER();
             break;
         }
         case INT_TYPE_PIT:

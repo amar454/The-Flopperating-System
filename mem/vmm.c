@@ -11,6 +11,7 @@ The Flopperating System is distributed in the hope that it will be useful, but W
 You should have received a copy of the GNU General Public License along with The Flopperating System. If not, see <https://www.gnu.org/licenses/>.
 
 [DESCRIPTION] - virtual memory management and interface
+
 */
 #include <stdint.h>
 #include "pmm.h"
@@ -770,25 +771,6 @@ uintptr_t vmm_alloc_aligned(vmm_region_t* region, size_t pages, size_t alignment
     return va;
 }
 
-uintptr_t vmm_map_mmio(vmm_region_t* region, uintptr_t phys_addr, size_t size, uint32_t flags) {
-    size_t pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    uintptr_t aligned_phys = phys_addr & ~(PAGE_SIZE - 1);
-
-    uintptr_t va = vmm_find_free_range(region, pages);
-    if (!va) {
-        return 0;
-    }
-
-    for (size_t i = 0; i < pages; i++) {
-        if (vmm_map(region, va + i * PAGE_SIZE, aligned_phys + i * PAGE_SIZE, flags) < 0) {
-            vmm_unmap_range(region, va, i);
-            return 0;
-        }
-    }
-
-    return va + (phys_addr & (PAGE_SIZE - 1));
-}
-
 int vmm_check_buffer(vmm_region_t* region, uintptr_t va, size_t size, bool write) {
     uintptr_t start_page = va & ~(PAGE_SIZE - 1);
     uintptr_t end_page = (va + size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
@@ -962,32 +944,80 @@ static bool vmm_internal_validator_kernel(uintptr_t base, size_t size) {
     if (base < (USER_SPACE_END + 1)) {
         return false;
     }
-    return true;
-}
-
-static bool _vmm_is_region_free(vmm_region_t* region, uintptr_t start, size_t pages) {
-    for (size_t i = 0; i < pages; i++) {
-        uintptr_t addr = start + (i * PAGE_SIZE);
-        uint32_t pdi = pd_index(addr);
-
-        if (!(region->pg_dir[pdi] & PAGE_PRESENT)) {
-            size_t skipped = (PAGE_TABLE_SIZE - pt_index(addr));
-            if (skipped > (pages - i)) {
-                skipped = (pages - i);
-            }
-            i += (skipped - 1);
-            continue;
-        }
-
-        uint32_t* pt = RECURSIVE_PT(pdi);
-        if (pt[pt_index(addr)] & PAGE_PRESENT) {
-            return false;
-        }
+    if ((base + size) > RECURSIVE_ADDR) {
+        return false;
     }
     return true;
 }
 
+static int vmm_insert_area(vmm_alloc_class_t* cls, uintptr_t start, size_t size) {
+    vmm_area_t* new_area = (vmm_area_t*) kmalloc(sizeof(vmm_area_t));
+    if (!new_area) {
+        return -1;
+    }
+
+    new_area->start = start;
+    new_area->size = size;
+    new_area->next = NULL;
+    new_area->prev = NULL;
+
+    if (!cls->vma_head) {
+        cls->vma_head = new_area;
+        return 0;
+    }
+
+    if (start < cls->vma_head->start) {
+        new_area->next = cls->vma_head;
+        cls->vma_head->prev = new_area;
+        cls->vma_head = new_area;
+        return 0;
+    }
+
+    vmm_area_t* iter = cls->vma_head;
+    while (iter->next && iter->next->start < start) {
+        iter = iter->next;
+    }
+
+    new_area->next = iter->next;
+    new_area->prev = iter;
+    if (iter->next) {
+        iter->next->prev = new_area;
+    }
+    iter->next = new_area;
+
+    return 0;
+}
+
+static void vmm_remove_area(vmm_alloc_class_t* cls, uintptr_t start) {
+    if (!cls || !cls->vma_head) {
+        return;
+    }
+
+    vmm_area_t* iter = cls->vma_head;
+    while (iter) {
+        if (iter->start == start) {
+            if (iter->prev) {
+                iter->prev->next = iter->next;
+            } else {
+                cls->vma_head = iter->next;
+            }
+
+            if (iter->next) {
+                iter->next->prev = iter->prev;
+            }
+
+            kfree(iter, sizeof(vmm_area_t));
+            return;
+        }
+        iter = iter->next;
+    }
+}
+
 void vmm_classes_init(vmm_region_t* region) {
+    if (!region) {
+        return;
+    }
+
     region->class_list = NULL;
 
     vmm_class_config_t configs[] = {{.type = VM_CLASS_KERNEL,
@@ -1029,14 +1059,20 @@ int vmm_class_register(vmm_region_t* region, vmm_class_config_t* config) {
         return -1;
     }
 
+    if (vmm_class_get(region, config->type)) {
+        return -1;
+    }
+
     vmm_alloc_class_t* new_class = (vmm_alloc_class_t*) kmalloc(sizeof(vmm_alloc_class_t));
     if (!new_class) {
         return -1;
     }
 
     flop_memcpy(&new_class->config, config, sizeof(vmm_class_config_t));
-    new_class->current_ptr = config->start;
+
     spinlock_init(&new_class->lock);
+    new_class->vma_head = NULL;
+    new_class->hint_ptr = config->start;
 
     new_class->next = region->class_list;
     region->class_list = new_class;
@@ -1055,14 +1091,87 @@ vmm_alloc_class_t* vmm_class_get(vmm_region_t* region, vm_class_type_t type) {
     return NULL;
 }
 
-void vmm_class_destroy_all(vmm_region_t* region) {
-    vmm_alloc_class_t* iter = region->class_list;
-    while (iter) {
-        vmm_alloc_class_t* next = iter->next;
-        kfree(iter, sizeof(vmm_alloc_class_t));
-        iter = next;
+static inline uintptr_t vmm_align_address(uintptr_t addr, size_t align) {
+    if (align <= PAGE_SIZE) {
+        return addr;
     }
-    region->class_list = NULL;
+    size_t mask = align - 1;
+    return (addr + mask) & ~mask;
+}
+
+static uintptr_t vmm_find_fit(vmm_alloc_class_t* cls, size_t size) {
+    uintptr_t candidate = vmm_align_address(cls->hint_ptr, cls->config.align);
+
+    if (candidate < cls->config.start || (candidate + size) > cls->config.end) {
+        candidate = vmm_align_address(cls->config.start, cls->config.align);
+    }
+
+    vmm_area_t* curr = cls->vma_head;
+    while (curr && (curr->start + curr->size) <= candidate) {
+        curr = curr->next;
+    }
+
+    bool wrapped = false;
+
+    while (true) {
+        uintptr_t gap_end = (curr) ? curr->start : cls->config.end;
+
+        if (candidate + size <= gap_end) {
+            if (!cls->config.validator || cls->config.validator(candidate, size)) {
+                return candidate;
+            } else {
+                candidate = vmm_align_address(candidate + PAGE_SIZE, cls->config.align);
+                continue;
+            }
+        }
+
+        if (curr) {
+            candidate = vmm_align_address(curr->start + curr->size, cls->config.align);
+            curr = curr->next;
+        } else {
+            if (!wrapped) {
+                wrapped = true;
+                candidate = vmm_align_address(cls->config.start, cls->config.align);
+                curr = cls->vma_head;
+            } else {
+                return 0;
+            }
+        }
+    }
+}
+
+static int vmm_map_pages(vmm_region_t* region, vmm_alloc_class_t* cls, uintptr_t base, size_t pages) {
+    for (size_t i = 0; i < pages; i++) {
+        uintptr_t pa = (uintptr_t) pmm_alloc_page();
+        if (!pa) {
+            vmm_unmap_range(region, base, i);
+            return -1;
+        }
+
+        if (vmm_map(region, base + i * PAGE_SIZE, pa, cls->config.flags) != 0) {
+            pmm_free_page((void*) pa);
+            vmm_unmap_range(region, base, i);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int vmm_unmap_pages(vmm_region_t* region, vmm_alloc_class_t* cls, uintptr_t base, size_t pages) {
+    for (size_t i = 0; i < pages; i++) {
+        uintptr_t pa = vmm_resolve(region, base + i * PAGE_SIZE);
+        if (!pa) {
+            vmm_unmap_range(region, base, i);
+            return -1;
+        }
+
+        if (vmm_unmap(region, base + i * PAGE_SIZE) != 0) {
+            pmm_free_page((void*) pa);
+            vmm_unmap_range(region, base, i);
+            return -1;
+        }
+    }
+    return 0;
 }
 
 uintptr_t vmm_class_alloc(vmm_region_t* region, vm_class_type_t type, size_t pages) {
@@ -1074,57 +1183,28 @@ uintptr_t vmm_class_alloc(vmm_region_t* region, vm_class_type_t type, size_t pag
     spinlock(&cls->lock);
 
     size_t size = pages * PAGE_SIZE;
-    uintptr_t ptr = cls->current_ptr;
+    uintptr_t va = vmm_find_fit(cls, size);
 
-    if (cls->config.align > PAGE_SIZE) {
-        ptr = (ptr + cls->config.align - 1) & ~(cls->config.align - 1);
+    if (!va) {
+        spinlock_unlock(&cls->lock, true);
+        return 0;
     }
 
-    uintptr_t start_search = ptr;
-    bool wrapped = false;
-
-    while (true) {
-        if (ptr + size > cls->config.end) {
-            if (wrapped) {
-                spinlock_unlock(&cls->lock, true);
-                return 0;
-            }
-            ptr = cls->config.start;
-            if (cls->config.align > PAGE_SIZE) {
-                ptr = (ptr + cls->config.align - 1) & ~(cls->config.align - 1);
-            }
-            wrapped = true;
-            continue;
-        }
-
-        if (wrapped && ptr >= start_search) {
-            spinlock_unlock(&cls->lock, true);
-            return 0;
-        }
-
-        if (cls->config.validator && !cls->config.validator(ptr, size)) {
-            ptr += PAGE_SIZE;
-            continue;
-        }
-
-        if (_vmm_is_region_free(region, ptr, pages)) {
-            for (size_t i = 0; i < pages; i++) {
-                uintptr_t pa = (uintptr_t) pmm_alloc_page();
-                if (!pa) {
-                    vmm_unmap_range(region, ptr, i);
-                    spinlock_unlock(&cls->lock, true);
-                    return 0;
-                }
-                vmm_map(region, ptr + i * PAGE_SIZE, pa, cls->config.flags);
-            }
-
-            cls->current_ptr = ptr + size;
-            spinlock_unlock(&cls->lock, true);
-            return ptr;
-        }
-
-        ptr += PAGE_SIZE;
+    if (vmm_insert_area(cls, va, size) != 0) {
+        spinlock_unlock(&cls->lock, true);
+        return 0;
     }
+
+    if (vmm_map_pages(region, cls, va, pages) != 0) {
+        vmm_remove_area(cls, va);
+        spinlock_unlock(&cls->lock, true);
+        return 0;
+    }
+
+    cls->hint_ptr = va + size;
+
+    spinlock_unlock(&cls->lock, true);
+    return va;
 }
 
 uintptr_t vmm_alloc_kernel(vmm_region_t* region, size_t pages) {
@@ -1141,4 +1221,381 @@ uintptr_t vmm_alloc_dma(vmm_region_t* region, size_t pages) {
 
 uintptr_t vmm_alloc_mmio(vmm_region_t* region, size_t pages) {
     return vmm_class_alloc(region, VM_CLASS_MMIO, pages);
+}
+
+vmm_pager_desc_t* vmm_pager_create(vmm_region_t* region) {
+    if (!region) {
+        return NULL;
+    }
+
+    vmm_pager_desc_t* desc = (vmm_pager_desc_t*) kmalloc(sizeof(vmm_pager_desc_t));
+
+    if (!desc) {
+        return NULL;
+    }
+
+    flop_memset(desc, 0, sizeof(vmm_pager_desc_t));
+    desc->region = region;
+    desc->base_va = 0;
+    desc->size_pages = 0;
+    desc->next = NULL;
+    spinlock_init(&desc->lock);
+
+    return desc;
+}
+
+void vmm_pager_destroy(vmm_pager_desc_t* vmm_pager) {
+    if (!vmm_pager) {
+        return;
+    }
+
+    spinlock(&vmm_pager->lock);
+    
+    if (vmm_pager->base_va && vmm_pager->size_pages > 0) {
+        vmm_free(vmm_pager->region, vmm_pager->base_va, vmm_pager->size_pages);
+    }
+    
+    spinlock_unlock(&vmm_pager->lock, true);
+
+    kfree(vmm_pager, sizeof(vmm_pager_desc_t));
+}
+
+static int vmm_pager_handle_alloc(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    uintptr_t va = vmm_alloc(vmm_pager->region, req->page_count, req->flags);
+
+    if (va == (uintptr_t) -1) {
+        return -1;
+    }
+
+    if (vmm_pager->size_pages == 0) {
+        vmm_pager->base_va = va;
+    }
+
+    vmm_pager->size_pages += req->page_count;
+    vmm_pager->default_flags = req->flags;
+    return 0;
+}
+
+static int vmm_pager_handle_free(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    if (vmm_pager->size_pages < req->page_count) {
+        return -1;
+    }
+
+    uintptr_t target_va = vmm_pager->base_va + (req->virtual_offset * PAGE_SIZE);
+    vmm_free(vmm_pager->region, target_va, req->page_count);
+
+    vmm_pager->size_pages -= req->page_count;
+    return 0;
+}
+
+static int vmm_pager_handle_map_physical(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    uintptr_t target_va = vmm_pager->base_va + (req->virtual_offset * PAGE_SIZE);
+
+    if (target_va < vmm_pager->base_va || target_va >= (vmm_pager->base_va + vmm_pager->size_pages * PAGE_SIZE)) {
+        uintptr_t va = vmm_pager->region->next_free_va ? vmm_pager->region->next_free_va : vmm_pager->region->base_va;
+
+        for (size_t i = 0; i < req->page_count; i++) {
+            if (vmm_map(vmm_pager->region, va + (i * PAGE_SIZE), req->target_pa + (i * PAGE_SIZE), req->flags) != 0) {
+                return -1;
+            }
+        }
+
+        vmm_pager->region->next_free_va = va + (req->page_count * PAGE_SIZE);
+
+        if (vmm_pager->size_pages == 0) {
+            vmm_pager->base_va = va;
+        }
+
+        vmm_pager->size_pages += req->page_count;
+    } else {
+        for (size_t i = 0; i < req->page_count; i++) {
+            vmm_unmap(vmm_pager->region, target_va + (i * PAGE_SIZE));
+
+            if (vmm_map(vmm_pager->region, target_va + (i * PAGE_SIZE), req->target_pa + (i * PAGE_SIZE), req->flags) !=
+                0) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int vmm_pager_handle_unmap_physical(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    uintptr_t start_va = vmm_pager->base_va + (req->virtual_offset * PAGE_SIZE);
+
+    if (start_va < vmm_pager->base_va ||
+        (start_va + req->page_count * PAGE_SIZE) > (vmm_pager->base_va + vmm_pager->size_pages * PAGE_SIZE)) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < req->page_count; i++) {
+        uintptr_t curr_va = start_va + (i * PAGE_SIZE);
+        uintptr_t pa = vmm_resolve(vmm_pager->region, curr_va);
+        if (pa) {
+            vmm_unmap(vmm_pager->region, curr_va);
+        }
+    }
+    return 0;
+}
+
+static int vmm_pager_handle_protect(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    uintptr_t start_va = vmm_pager->base_va + (req->virtual_offset * PAGE_SIZE);
+
+    if (start_va < vmm_pager->base_va ||
+        (start_va + req->page_count * PAGE_SIZE) > (vmm_pager->base_va + vmm_pager->size_pages * PAGE_SIZE)) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < req->page_count; i++) {
+        uintptr_t curr_va = start_va + (i * PAGE_SIZE);
+        uintptr_t pa = vmm_resolve(vmm_pager->region, curr_va);
+        if (pa) {
+            vmm_map(vmm_pager->region, curr_va, pa, req->flags);
+        }
+    }
+    return 0;
+}
+
+static int vmm_pager_handle_query(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    uintptr_t target_va = vmm_pager->base_va + (req->virtual_offset * PAGE_SIZE);
+
+    if (target_va < vmm_pager->base_va || target_va >= (vmm_pager->base_va + vmm_pager->size_pages * PAGE_SIZE)) {
+        return -1;
+    }
+
+    uint32_t pdi = pd_index(target_va);
+    uint32_t pti = pt_index(target_va);
+
+    if (!(vmm_pager->region->pg_dir[pdi] & PAGE_PRESENT)) {
+        return -1;
+    }
+
+    uint32_t* pt = RECURSIVE_PT(pdi);
+    uint32_t entry = pt[pti];
+
+    if (!(entry & PAGE_PRESENT)) {
+        return -1;
+    }
+
+    if (req->response_pa) {
+        *req->response_pa = entry & PAGE_MASK;
+    }
+    
+    if (req->response_flags) {
+        *req->response_flags = entry & 0xFFF;
+    }
+
+    return 0;
+}
+
+static int vmm_pager_handle_copy(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    vmm_region_t* new_region = vmm_copy_pagemap(vmm_pager->region);
+    if (!new_region) {
+        return -1;
+    }
+    
+    if (req->response_ptr) {
+        *req->response_ptr = (void*) new_region;
+    }
+    
+    return 0;
+}
+
+static int vmm_pager_handle_map_shared(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    if (!req->target_region) {
+        return -1;
+    }
+
+    uintptr_t va_a = vmm_pager->base_va + (req->virtual_offset * PAGE_SIZE);
+    uintptr_t va_b = req->target_region->base_va + (req->target_virtual_offset * PAGE_SIZE);
+
+    if (vmm_map_shared(vmm_pager->region, req->target_region, va_a, va_b, req->target_pa, req->page_count, req->flags) <
+        0) {
+        return -1;
+    }
+
+    if (vmm_pager->size_pages == 0) {
+        vmm_pager->base_va = va_a;
+    }
+    
+    vmm_pager->size_pages += req->page_count;
+    return 0;
+}
+
+static int vmm_pager_handle_identity(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    if (vmm_identity_map(vmm_pager->region, req->target_pa, req->page_count, req->flags) < 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int vmm_pager_handle_map_direct(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    if (vmm_map_direct(vmm_pager->region, req->target_pa, req->page_count, req->flags) < 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int vmm_pager_handle_map_anon(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    uintptr_t va = vmm_map_anonymous(vmm_pager->region, req->page_count, req->flags);
+    if (!va) {
+        return -1;
+    }
+
+    if (vmm_pager->size_pages == 0) {
+        vmm_pager->base_va = va;
+    }
+    vmm_pager->size_pages += req->page_count;
+
+    if (req->response_pa) {
+        *req->response_pa = va;
+    }
+    return 0;
+}
+
+static int vmm_pager_handle_nuke(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    vmm_nuke_pagemap(vmm_pager->region);
+    vmm_pager->region = NULL;
+    vmm_pager->base_va = 0;
+    vmm_pager->size_pages = 0;
+    return 0;
+}
+
+int vmm_pager_handle_request(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req) {
+    if (!vmm_pager || !req || !vmm_pager->region) {
+        return -1;
+    }
+
+    spinlock(&vmm_pager->lock);
+
+    int status = -1;
+
+    switch (req->type) {
+        case VMM_PAGER_REQ_ALLOC:
+            status = vmm_pager_handle_alloc(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_FREE:
+            status = vmm_pager_handle_free(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_MAP_PHYSICAL:
+            status = vmm_pager_handle_map_physical(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_UNMAP_PHYSICAL:
+            status = vmm_pager_handle_unmap_physical(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_PROTECT:
+            status = vmm_pager_handle_protect(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_QUERY:
+            status = vmm_pager_handle_query(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_COPY:
+            status = vmm_pager_handle_copy(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_MAP_SHARED:
+            status = vmm_pager_handle_map_shared(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_IDENTITY:
+            status = vmm_pager_handle_identity(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_MAP_DIRECT:
+            status = vmm_pager_handle_map_direct(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_MAP_ANON:
+            status = vmm_pager_handle_map_anon(vmm_pager, req);
+            break;
+        case VMM_PAGER_REQ_NUKE:
+            status = vmm_pager_handle_nuke(vmm_pager, req);
+            break;
+        default:
+            status = -1;
+            break;
+    }
+
+    spinlock_unlock(&vmm_pager->lock, true);
+    return status;
+}
+
+static uint64_t vmm_rng_state = 123456789;
+
+static uint32_t vmm_rand(void) {
+    vmm_rng_state = vmm_rng_state * 1103515245 + 12345;
+    return (uint32_t) ((vmm_rng_state / 65536) % 32768);
+}
+
+static uint32_t vmm_get_entry_flags(vmm_region_t* region, uintptr_t va) {
+    uint32_t pdi = pd_index(va);
+    uint32_t pti = pt_index(va);
+
+    uint32_t* pt = RECURSIVE_PT(pdi);
+    return pt[pti] & 0xFFF;
+}
+
+uintptr_t* vmm_shuffle(vmm_region_t* region, uintptr_t base_va, size_t pages) {
+    if (!region || pages == 0) {
+        return NULL;
+    }
+
+    uintptr_t* key = (uintptr_t*) kmalloc(sizeof(uintptr_t) * pages);
+
+    if (!key) {
+        return NULL;
+    }
+
+    uintptr_t* shuffled_pas = (uintptr_t*) kmalloc(sizeof(uintptr_t) * pages);
+
+    if (!shuffled_pas) {
+        kfree(key, sizeof(uintptr_t) * pages);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < pages; i++) {
+        uintptr_t va = base_va + (i * PAGE_SIZE);
+        uintptr_t pa = vmm_resolve(region, va);
+
+        if (!pa) {
+            kfree(key, sizeof(uintptr_t) * pages);
+            kfree(shuffled_pas, sizeof(uintptr_t) * pages);
+            return NULL;
+        }
+
+        key[i] = pa;
+        shuffled_pas[i] = pa;
+    }
+
+    // fisher-yates shuffle
+    for (size_t i = pages - 1; i > 0; i--) {
+        size_t j = vmm_rand() % (i + 1);
+        uintptr_t temp = shuffled_pas[i];
+        shuffled_pas[i] = shuffled_pas[j];
+        shuffled_pas[j] = temp;
+    }
+
+    for (size_t i = 0; i < pages; i++) {
+        uintptr_t va = base_va + (i * PAGE_SIZE);
+        uint32_t flags = vmm_get_entry_flags(region, va);
+
+        vmm_unmap(region, va);
+
+        vmm_map(region, va, shuffled_pas[i], flags);
+    }
+
+    kfree(shuffled_pas, sizeof(uintptr_t) * pages);
+
+    return key;
+}
+
+void vmm_unshuffle(vmm_region_t* region, uintptr_t base_va, size_t pages, uintptr_t* key) {
+    if (!region || !key || pages == 0) {
+        return;
+    }
+
+    for (size_t i = 0; i < pages; i++) {
+        uintptr_t va = base_va + (i * PAGE_SIZE);
+        uint32_t flags = vmm_get_entry_flags(region, va);
+        vmm_unmap(region, va);
+        vmm_map(region, va, key[i], flags);
+    }
+    
+    kfree(key, sizeof(uintptr_t) * pages);
 }

@@ -5,9 +5,10 @@
 #include "../task/sync/spinlock.h"
 #define PAGE_SIZE 4096
 #define RECURSIVE_PDE 1023
-
 #define RECURSIVE_ADDR 0xFFC00000
 #define RECURSIVE_PT(pdi) ((uint32_t*) (RECURSIVE_ADDR + (pdi) * PAGE_SIZE))
+#define USER_SPACE_START 0x00100000U
+#define USER_SPACE_END 0xBFFFFFFFU
 
 extern uint32_t* pg_dir;
 extern uint32_t* pg_tbls;
@@ -32,10 +33,18 @@ typedef struct vmm_class_config {
     bool (*validator)(uintptr_t base, size_t size);
 } vmm_class_config_t;
 
+typedef struct vmm_area {
+    uintptr_t start;
+    size_t size;
+    struct vmm_area* next;
+    struct vmm_area* prev;
+} vmm_area_t;
+
 typedef struct vmm_alloc_class {
     vmm_class_config_t config;
-    uintptr_t current_ptr;
     spinlock_t lock;
+    vmm_area_t* vma_head;
+    uintptr_t hint_ptr;
     struct vmm_alloc_class* next;
 } vmm_alloc_class_t;
 
@@ -47,6 +56,48 @@ typedef struct vmm_region {
     struct vmm_alloc_class* class_list;
 } vmm_region_t;
 
+typedef enum {
+    VMM_PAGER_REQ_ALLOC,
+    VMM_PAGER_REQ_FREE,
+    VMM_PAGER_REQ_MAP_PHYSICAL,
+    VMM_PAGER_REQ_UNMAP_PHYSICAL,
+    VMM_PAGER_REQ_PROTECT,
+    VMM_PAGER_REQ_QUERY,
+    VMM_PAGER_REQ_COPY,
+    VMM_PAGER_REQ_MAP_SHARED,
+    VMM_PAGER_REQ_IDENTITY,
+    VMM_PAGER_REQ_MAP_DIRECT,
+    VMM_PAGER_REQ_MAP_ANON,
+    VMM_PAGER_REQ_NUKE
+} vmm_pager_request_type_t;
+
+typedef struct {
+    vmm_pager_request_type_t type;
+    size_t page_count;
+    uint32_t flags;
+    uintptr_t virtual_offset;
+    uintptr_t target_pa;
+    struct vmm_region* target_region;
+    uintptr_t target_virtual_offset;
+    uintptr_t* response_pa;
+    uint32_t* response_flags;
+    void** response_ptr;
+} vmm_pager_request_t;
+
+typedef struct vmm_pager_desc {
+    uintptr_t base_va;
+    size_t size_pages;
+    uint32_t default_flags;
+    vmm_region_t* region;
+    spinlock_t lock;
+    struct vmm_pager_desc* next;
+} vmm_pager_desc_t;
+
+uintptr_t* vmm_shuffle(vmm_region_t* region, uintptr_t base_va, size_t pages);
+void vmm_unshuffle(vmm_region_t* region, uintptr_t base_va, size_t pages, uintptr_t* key);
+vmm_pager_desc_t* vmm_pager_create(vmm_region_t* region);
+void vmm_pager_destroy(vmm_pager_desc_t* vmm_pager);
+int vmm_pager_handle_request(vmm_pager_desc_t* vmm_pager, vmm_pager_request_t* req);
 void vmm_classes_init(vmm_region_t* region);
 int vmm_class_register(vmm_region_t* region, vmm_class_config_t* config);
 uintptr_t vmm_class_alloc(vmm_region_t* region, vm_class_type_t type, size_t pages);
@@ -57,8 +108,6 @@ uintptr_t vmm_alloc_user(vmm_region_t* region, size_t pages);
 uintptr_t vmm_alloc_dma(vmm_region_t* region, size_t pages);
 uintptr_t vmm_alloc_mmio(vmm_region_t* region, size_t pages);
 int vmm_alloc_pde(uint32_t* dir, uint32_t pde_idx, uint32_t flags);
-#define USER_SPACE_START 0x00100000U
-#define USER_SPACE_END 0xBFFFFFFFU
 void vmm_region_insert(vmm_region_t* region);
 void vmm_region_remove(vmm_region_t* region);
 uintptr_t vmm_resolve(vmm_region_t* region, uintptr_t va);
@@ -84,7 +133,6 @@ vmm_region_t* vmm_copy_pagemap(vmm_region_t* src);
 vmm_region_t* vmm_get_current();
 uintptr_t vmm_calloc(vmm_region_t* region, size_t pages, uint32_t flags);
 uintptr_t vmm_alloc_aligned(vmm_region_t* region, size_t pages, size_t alignment, uint32_t flags);
-uintptr_t vmm_map_mmio(vmm_region_t* region, uintptr_t phys_addr, size_t size, uint32_t flags);
 int vmm_check_buffer(vmm_region_t* region, uintptr_t va, size_t size, bool write);
 int vmm_get_phys_list(vmm_region_t* region, uintptr_t va, size_t pages, uintptr_t* out_paddrs);
 int vmm_is_phys_contiguous(vmm_region_t* region, uintptr_t va, size_t pages);

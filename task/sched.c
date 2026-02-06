@@ -381,14 +381,30 @@ thread_t* current_thread;
 void sched_boost_starved_threads(thread_list_t* list) {
     spinlock(&list->lock);
 
-    for (thread_t* t = list->head; t; t = t->next) {
-        t->time_since_last_run++;
+    uint32_t max_wait = 0;
 
-        // we only boost normal threads. realtime threads are already top priority
-        // and idle threads shouldn't be boosted randomly.
-        if (t->cls == SCHED_CLASS_NORMAL && t->time_since_last_run > STARVATION_THRESHOLD &&
-            t->priority.effective < MAX_PRIORITY) {
-            t->priority.effective += BOOST_AMOUNT;
+    for (thread_t* thread = list->head; thread; thread = thread->next) {
+        thread->time_since_last_run++;
+        if (thread->cls == SCHED_CLASS_NORMAL && thread->time_since_last_run > max_wait) {
+            max_wait = thread->time_since_last_run;
+        }
+    }
+
+    if (max_wait > STARVATION_THRESHOLD) {
+        for (thread_t* thread = list->head; thread; thread = thread->next) {
+            if (thread->cls == SCHED_CLASS_NORMAL && thread->time_since_last_run > STARVATION_THRESHOLD) {
+                uint32_t boost = (uint32_t) ((thread->time_since_last_run * BOOST_AMOUNT) / max_wait);
+
+                if (boost == 0) {
+                    boost = 1;
+                }
+
+                if (thread->priority.effective + boost >= MAX_PRIORITY) {
+                    thread->priority.effective = MAX_PRIORITY;
+                } else {
+                    thread->priority.effective += boost;
+                }
+            }
         }
     }
 
@@ -468,20 +484,20 @@ static void sched_unlink_thread(thread_list_t* list, thread_t* thread, thread_t*
     thread->next = NULL;
 }
 
-static inline void sched_assign_time_slice(thread_t* t) {
+static inline void sched_assign_time_slice(thread_t* thread) {
     // assign time slice based on the thread class
     // realtime threads get the most time, idle get the least.
-    switch (t->cls) {
+    switch (thread->cls) {
         case SCHED_CLASS_REALTIME:
-            t->time_slice = TIMESLICE_REALTIME;
+            thread->time_slice = TIMESLICE_REALTIME;
             break;
         case SCHED_CLASS_IDLE:
-            t->time_slice = TIMESLICE_IDLE;
+            thread->time_slice = TIMESLICE_IDLE;
             break;
         case SCHED_CLASS_NORMAL:
         default:
             // normal threads use the base priority to calculate slice
-            t->time_slice = t->priority.base ? t->priority.base : TIMESLICE_NORMAL;
+            thread->time_slice = thread->priority.base ? thread->priority.base : TIMESLICE_NORMAL;
             break;
     }
 }
@@ -534,11 +550,13 @@ static void sched_determine_and_switch(thread_t* next) {
     thread_t* prev = current_thread;
     current_thread = next;
     current_process = next->process;
+
     if (next->process != NULL) {
         load_pd(next->process->region->pg_dir);
     } else {
         load_pd(kernel_region->pg_dir);
     }
+
     context_switch(&prev->context, &next->context);
 }
 
@@ -608,8 +626,8 @@ void sched_thread_sleep(uint32_t ms) {
     sched_yield();
 }
 
-static inline bool sched_thread_should_wake(thread_t* t) {
-    return t->wake_time <= sched_ticks_counter;
+static inline bool sched_thread_should_wake(thread_t* thread) {
+    return thread->wake_time <= sched_ticks_counter;
 }
 
 static void sched_remove_from_sleep_queue(thread_list_t* sleep_queue, thread_t* thread, thread_t* prev) {
@@ -630,20 +648,20 @@ static void sched_remove_from_sleep_queue(thread_list_t* sleep_queue, thread_t* 
     thread->next = NULL;
 }
 
-static void sched_wake_thread(thread_t* t) {
-    t->thread_state = THREAD_READY;
-    sched_enqueue(&sched.ready_queue, t);
+static void sched_wake_thread(thread_t* thread) {
+    thread->thread_state = THREAD_READY;
+    sched_enqueue(&sched.ready_queue, thread);
 }
 
-static thread_t* sched_process_sleep_thread(thread_list_t* sleep_queue, thread_t* t, thread_t* prev) {
-    thread_t* next = t->next;
+static thread_t* sched_process_sleep_thread(thread_list_t* sleep_queue, thread_t* thread, thread_t* prev) {
+    thread_t* next = thread->next;
 
-    if (sched_thread_should_wake(t)) {
-        sched_remove_from_sleep_queue(sleep_queue, t, prev);
-        sched_wake_thread(t);
-        return prev; // prev stays the same since we removed t
+    if (sched_thread_should_wake(thread)) {
+        sched_remove_from_sleep_queue(sleep_queue, thread, prev);
+        sched_wake_thread(thread);
+        return prev; // prev stays the same since we removed thread
     } else {
-        return t; // prev moves forward
+        return thread; // prev moves forward
     }
 }
 

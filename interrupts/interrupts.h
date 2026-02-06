@@ -45,6 +45,9 @@ static uint8_t interrupt_stack[ISR_STACK_SIZE] __attribute__((aligned(16)));
 #define PIC2_COMMAND 0xA0
 #define PIC2_DATA 0xA1
 
+#define PIT_FREQUENCY 100
+#define IDT_FLAGS 0x8E
+
 #define ICW1_INIT 0x10
 #define ICW1_ICW4 0x01
 #define ICW4_8086 0x01
@@ -56,6 +59,16 @@ static uint8_t interrupt_stack[ISR_STACK_SIZE] __attribute__((aligned(16)));
 
 #define PIC1_MASK 0xFC
 #define PIC2_MASK 0xFF
+
+typedef enum int_type {
+    INT_TYPE_DIVIDE_BY_ZERO = 0,
+    INT_TYPE_INVALID_OPCODE = 6,
+    INT_TYPE_GPF = 13,
+    INT_TYPE_PAGE_FAULT = 14,
+    INT_TYPE_PIT = 32,
+    INT_TYPE_KEYBOARD = 33,
+    INT_TYPE_SYSCALL = 80,
+} int_type_t;
 
 #define PIC_EOI 0x20
 
@@ -69,6 +82,9 @@ static uint8_t interrupt_stack[ISR_STACK_SIZE] __attribute__((aligned(16)));
 #define PIT_DIVISOR_MSB_SHIFT 8
 #define KERNEL_CODE_SEGMENT 0x08
 #define USER_CODE_SEGMENT 0x1B
+
+#define PIT_FREQUENCY 100
+#define IDT_FLAGS 0x8E
 
 void interrupts_init(void);
 
@@ -88,5 +104,12 @@ void interrupts_init(void);
                          : "=r"(eflags));                                                                              \
         (eflags & (1 << 9)) != 0;                                                                                      \
     })
+
+#define PAGE_FAULT_HANDLER()                                                                                           \
+    uint32_t cr2;                                                                                                      \
+    __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));                                                                     \
+    log("isr14: page fault\n", RED);                                                                                   \
+    log_uint("CR2: ", cr2);                                                                                            \
+    log_uint("err code: ", frame->err_code);
 extern uint32_t global_tick_count;
 #endif // INTERRUPTS_H
